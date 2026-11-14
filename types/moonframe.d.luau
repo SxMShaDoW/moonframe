@@ -2115,8 +2115,9 @@ type NotifyMsg = {
 
 -- Whether the user lets the app post notifications, in
 -- `app.notifications`: "in-window" where the system shows none (Linux,
--- Windows, a bare binary) and a toast shows them; "undecided" until the
--- user is asked.
+-- Windows, a bare binary) and a toast shows them; "denied" where the user
+-- turned them off, toasts showing them too; "undecided" until the user is
+-- asked.
 type NotificationPermission = "allowed" | "denied" | "undecided" | "in-window"
 
 type NotificationClick = {

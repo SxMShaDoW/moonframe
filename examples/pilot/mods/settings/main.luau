@@ -98,7 +98,7 @@ end
 -- switch that turns them on.
 local function notifications_note(permission: string?): string
 	if permission == "denied" then
-		return "Turned off for this app in System Settings › Notifications."
+		return "Turned off for this app in System Settings › Notifications: shown in the window instead."
 	elseif permission == "in-window" then
 		return "Shown in the window: this run cannot post system notifications."
 	end

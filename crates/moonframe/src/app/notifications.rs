@@ -31,4 +31,12 @@ impl MoonframeApp {
             Err(problem) => tracing::warn!("{from}: {problem}"),
         }
     }
+
+    /// Asks the user to allow notifications for the mod `from`. The
+    /// system asks once; `app.notifications` says the answer.
+    pub(super) fn ask_to_notify(&mut self, from: &str) {
+        if let Err(problem) = self.alerts.ask() {
+            tracing::warn!("{from}: {problem}");
+        }
+    }
 }

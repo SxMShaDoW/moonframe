@@ -17,7 +17,15 @@ use {
         UNNotificationResponse, UNNotificationSettings, UNUserNotificationCenter,
         UNUserNotificationCenterDelegate,
     },
-    std::{cell::Cell, path::Path, ptr::NonNull, sync::OnceLock},
+    std::{
+        cell::Cell,
+        path::Path,
+        ptr::NonNull,
+        sync::{
+            OnceLock,
+            atomic::{AtomicBool, Ordering},
+        },
+    },
 };
 
 /// The sounds playing: `NSSound` stops when its last reference goes.
@@ -68,6 +76,9 @@ static CLICKED: OnceLock<Clicked> = OnceLock::new();
 /// What is told of whether the user lets the app post notifications.
 type Changed = Box<dyn Fn(Permission) + Send + Sync>;
 static CHANGED: OnceLock<Changed> = OnceLock::new();
+/// Whether the user turned notifications off, as last read: the system
+/// would drop them, so the caller shows them as toasts.
+static DENIED: AtomicBool = AtomicBool::new(false);
 
 thread_local! {
     /// The centre's delegate, which it holds weakly; the main thread's.
@@ -102,6 +113,7 @@ pub(super) fn read_permission() {
     let read = RcBlock::new(move |settings: NonNull<UNNotificationSettings>| {
         // SAFETY: the centre passes valid settings.
         let status = unsafe { settings.as_ref() }.authorizationStatus();
+        DENIED.store(status == UNAuthorizationStatus::Denied, Ordering::Relaxed);
         changed(match status {
             UNAuthorizationStatus::NotDetermined => Permission::Undecided,
             UNAuthorizationStatus::Denied => Permission::Denied,
@@ -142,19 +154,31 @@ pub(super) fn ask() {
 }
 
 /// Posts `notification` as `identifier`; false when this run cannot (a
-/// bare binary), for the caller to show it otherwise. The first one asks
-/// the user to allow notifications, unless a mod asked before; until they
-/// do, macOS drops them. One that replaces takes the place of those
+/// bare binary) or the user turned notifications off, for the caller to
+/// show it otherwise. The first one asks the user to allow notifications,
+/// unless a mod asked before; until they do, macOS drops them. One that
+/// replaces takes the place of `replaced`, those posted this run, whether
+/// the system delivered them yet or not, and of those it lists as
 /// delivered with its mod and `id`.
 #[allow(unsafe_code, reason = "reading what the centre passes; see SAFETY")]
-pub(super) fn post(identifier: &str, notification: &Notification) -> bool {
-    if !bundled() {
+pub(super) fn post(identifier: &str, notification: &Notification, replaced: &[String]) -> bool {
+    if !bundled() || DENIED.load(Ordering::Relaxed) {
         return false;
     }
     if !ASKED.get() {
         ask();
     }
     let center = UNUserNotificationCenter::currentNotificationCenter();
+    if !replaced.is_empty() {
+        // Pending too: one posted a moment ago may not be delivered yet.
+        let replaced: Vec<Retained<NSString>> = replaced
+            .iter()
+            .map(|other| NSString::from_str(other))
+            .collect();
+        let replaced = NSArray::from_retained_slice(&replaced);
+        center.removePendingNotificationRequestsWithIdentifiers(&replaced);
+        center.removeDeliveredNotificationsWithIdentifiers(&replaced);
+    }
     if notification.replace {
         let posted = identifier.to_owned();
         let delivered = RcBlock::new(move |delivered: NonNull<NSArray<UNNotification>>| {

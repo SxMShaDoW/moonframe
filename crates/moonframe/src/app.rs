@@ -831,8 +831,7 @@ impl MoonframeApp {
                 }
             },
             Request::Notify(notification) => self.notify_request(from, notification, cx),
-            // The system asks once; `app.notifications` says the answer.
-            Request::AskToNotify => crate::alerts::ask(),
+            Request::AskToNotify => self.ask_to_notify(from),
             Request::Theme { light, dark } => {
                 if let Err(problem) = self.set_themes(light.as_deref(), dark.as_deref(), cx) {
                     self.workspace
