@@ -92,6 +92,10 @@ herdr-core = ["dep:moonframe-mux", "moonframe-mux/herdr-core"]
 map = ["dep:image", "dep:ureq"]
 # Drives a map through input events and reports what it cost.
 map-benchmark = ["map"]
+# `vector-*` providers: vector tiles drawn on the GPU by gpui-maps, under
+# the same pins, routes and gestures as the raster map. `tokio-maps` is the
+# runtime it fetches tiles on, renamed: the `tokio` feature names another.
+map-vector = ["dep:gpui-maps", "dep:tokio-maps", "map"]
 # `ui.video`: frames from another process in a Metal view of their own,
 # 16-bit and colour managed (macOS). Off by default: few apps need it.
 video = ["dep:core-graphics-types", "dep:metal", "dep:moonframe-frames"]
@@ -185,6 +189,7 @@ anstyle.workspace  = true
 futures.workspace             = true
 gpui-capture                  = { default-features = false, features = ["test-support"], optional = true, package = "gpui-pre", version = "=0.3.12" }
 gpui-kit.workspace            = true
+gpui-maps                     = { features = ["sprite_http_fetch"], optional = true, workspace = true }
 gpui-platform-capture         = { default-features = false, features = ["test-support"], optional = true, package = "gpui-pre-platform", version = "=0.3.12" }
 image                         = { optional = true, workspace = true }
 imagesize.workspace           = true
@@ -217,6 +222,7 @@ rust-embed.workspace          = true
 serde.workspace               = true
 serde_json.workspace          = true
 tempfile.workspace            = true
+tokio-maps                    = { features = ["rt-multi-thread"], optional = true, package = "tokio", version = "1" }
 toml.workspace                = true
 tracing.workspace             = true
 tracing-subscriber.workspace  = true

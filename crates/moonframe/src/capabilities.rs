@@ -31,6 +31,7 @@ fn compiled() -> std::collections::BTreeMap<String, bool> {
         "hotkey",
         "map",
         "map-benchmark",
+        "map-vector",
         "markdown",
         "math",
         "pi",
