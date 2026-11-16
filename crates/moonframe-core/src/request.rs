@@ -28,7 +28,7 @@ pub use {
     guard::Guard,
     hotkey::Hotkey,
     icon::{AppIcon, ICON_TYPES},
-    pdf::{Paper, Pdf, PdfSource, private_host},
+    pdf::{Paper, Pdf, PdfSource, public_address},
     pick::{Pick, PickKind},
     share::Share,
     status_item::{StatusEntry, StatusIcon, StatusItem, StatusLook},

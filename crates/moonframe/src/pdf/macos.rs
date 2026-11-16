@@ -1,12 +1,18 @@
 //! PDFs with WebKit: a `WKWebView` in an offscreen window, a session of its
 //! own (`nonPersistentDataStore`), content rules that keep it off the
-//! network (HTML) or off this machine and its network (a web page), then
+//! network (HTML) or off this machine and its network (a web page, whose
+//! connections all go through the PDF proxy too), then
 //! its print operation, saving to a file without a panel.
 
 #![allow(
     unsafe_code,
     reason = "WebKit and AppKit calls the bindings mark unsafe; each says why it is sound"
 )]
+
+// keep-sorted start
+mod network;
+mod proxy;
+// keep-sorted end
 
 use {
     super::{Job, Source},
@@ -26,8 +32,9 @@ use {
     },
     objc2_foundation::{NSError, NSPoint, NSRect, NSSize, NSString, NSURL, NSURLRequest},
     objc2_web_kit::{
-        WKContentRuleList, WKContentRuleListStore, WKNavigation, WKNavigationDelegate, WKWebView,
-        WKWebViewConfiguration, WKWebsiteDataStore,
+        WKContentRuleList, WKContentRuleListStore, WKNavigation, WKNavigationDelegate,
+        WKUserScript, WKUserScriptInjectionTime, WKWebView, WKWebViewConfiguration,
+        WKWebsiteDataStore,
     },
     std::{
         cell::{Cell, RefCell},
@@ -58,7 +65,8 @@ const OFFLINE_FILE: &str = r#"[
 ]"#;
 
 /// For a web page: the web, never this machine or its network by address
-/// (rules have no alternation, so one each), nor files.
+/// (rules have no alternation, so one each), nor files. Text alone: the
+/// proxy every connection goes through checks the address it reaches.
 const ONLINE: &str = r#"[
     {"trigger": {"url-filter": "^file:"}, "action": {"type": "block"}},
     {"trigger": {"url-filter": "^https?://localhost\\.?[:/]"}, "action": {"type": "block"}},
@@ -71,6 +79,10 @@ const ONLINE: &str = r#"[
     {"trigger": {"url-filter": "^https?://172\\.1[6-9]\\."}, "action": {"type": "block"}},
     {"trigger": {"url-filter": "^https?://172\\.2[0-9]\\."}, "action": {"type": "block"}},
     {"trigger": {"url-filter": "^https?://172\\.3[01]\\."}, "action": {"type": "block"}},
+    {"trigger": {"url-filter": "^https?://100\\.6[4-9]\\."}, "action": {"type": "block"}},
+    {"trigger": {"url-filter": "^https?://100\\.[7-9][0-9]\\."}, "action": {"type": "block"}},
+    {"trigger": {"url-filter": "^https?://100\\.1[01][0-9]\\."}, "action": {"type": "block"}},
+    {"trigger": {"url-filter": "^https?://100\\.12[0-7]\\."}, "action": {"type": "block"}},
     {"trigger": {"url-filter": "^https?://\\["}, "action": {"type": "block"}}
 ]"#;
 
@@ -240,11 +252,22 @@ fn start(job: Pending, rules: &WKContentRuleList, main: MainThreadMarker) {
     let paper = paper_size(job.paper);
     let width = (paper.width - 2.0 * MARGIN).max(100.0);
     let online = matches!(job.source, Source::Url(_));
+    // SAFETY: a fresh session of its own, on the main thread.
+    let store = unsafe { WKWebsiteDataStore::nonPersistentDataStore(main) };
+    // A web page connects only through the proxy, which reaches the public
+    // internet alone; the content rules below are only a first check.
+    if online
+        && let Err(problem) =
+            proxy::proxy().and_then(|proxy| network::through_proxy(&store, &proxy))
+    {
+        let _ = job.answer.send(Err(problem));
+        return;
+    }
     // SAFETY: a fresh configuration on the main thread, given its own
     // store, script setting and rules before any view takes it.
     let configuration = unsafe {
         let configuration = WKWebViewConfiguration::new(main);
-        configuration.setWebsiteDataStore(&WKWebsiteDataStore::nonPersistentDataStore(main));
+        configuration.setWebsiteDataStore(&store);
         configuration
             .defaultWebpagePreferences()
             .setAllowsContentJavaScript(online);
@@ -255,6 +278,10 @@ fn start(job: Pending, rules: &WKContentRuleList, main: MainThreadMarker) {
         configuration.preferences().setShouldPrintBackgrounds(true);
         configuration
     };
+    if online && let Err(problem) = without_webrtc(&configuration, main) {
+        let _ = job.answer.send(Err(problem));
+        return;
+    }
     let frame = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(width, 1000.0));
     // SAFETY: a fresh view with the configuration above.
     let view = unsafe {
@@ -313,6 +340,40 @@ fn start(job: Pending, rules: &WKContentRuleList, main: MainThreadMarker) {
             delegate,
         })
     });
+}
+
+/// Takes WebRTC from a web page: its connections are its own, not the
+/// session's, so they would pass the proxy by. WebKit's switch, which
+/// takes it from every frame, the page's own included, is required; the
+/// page's constructors are also removed in every frame before its script
+/// runs, should a frame escape it.
+fn without_webrtc(
+    configuration: &WKWebViewConfiguration,
+    main: MainThreadMarker,
+) -> Result<(), String> {
+    const SCRIPT: &str = "for (const name of ['RTCPeerConnection', 'webkitRTCPeerConnection', \
+                          'RTCDataChannel', 'RTCRtpSender', 'RTCRtpReceiver', \
+                          'RTCRtpTransceiver', 'RTCIceCandidate', 'RTCIceTransport', \
+                          'RTCSessionDescription']) { try { delete window[name]; } catch {} }";
+    // SAFETY: the configuration's own preferences, asked whether they
+    // answer WebKit's switch before it is called with a flag.
+    unsafe {
+        let preferences = configuration.preferences();
+        let switchable: bool =
+            msg_send![&*preferences, respondsToSelector: sel!(_setPeerConnectionEnabled:)];
+        if !switchable {
+            return Err("this system's WebKit cannot turn WebRTC off for a web page".to_owned());
+        }
+        let () = msg_send![&*preferences, _setPeerConnectionEnabled: false];
+        let script = WKUserScript::initWithSource_injectionTime_forMainFrameOnly(
+            WKUserScript::alloc(main),
+            &NSString::from_str(SCRIPT),
+            WKUserScriptInjectionTime::AtDocumentStart,
+            false,
+        );
+        configuration.userContentController().addUserScript(&script);
+    }
+    Ok(())
 }
 
 /// What the delegate prints, and to whom it answers.

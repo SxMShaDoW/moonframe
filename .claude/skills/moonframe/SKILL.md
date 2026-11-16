@@ -1073,7 +1073,9 @@ return state, { { to = "app:window", msg = { open = "settings", send = { page = 
   HTML and `html_file` show with no script and nothing from the network:
   inline pictures as `data:`. A `url` page runs its script, in a session of
   its own (none of the app's cookies), and never reaches this machine or
-  its network by address. It loads in an offscreen view and prints to
+  its network, by address or by a name that resolves to one: its every
+  connection goes through a proxy in the app that checks the address it
+  connects to (macOS 14 or later; earlier, `url` answers `error`). It loads in an offscreen view and prints to
   paper pages (`paper = "a4"` or `"letter"`, else the system's; half-inch
   margins; backgrounds print; CSS `@page` and `break-before: page` work).
   `pdf` is where: a path relative to the app's cache folder
