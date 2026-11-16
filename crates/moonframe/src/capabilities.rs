@@ -30,6 +30,7 @@ fn compiled() -> std::collections::BTreeMap<String, bool> {
         "herdr-core",
         "map",
         "map-benchmark",
+        "map-vector",
         "markdown",
         "math",
         "pi",
