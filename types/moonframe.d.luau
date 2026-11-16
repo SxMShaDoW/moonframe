@@ -2182,7 +2182,8 @@ type PdfMsg = {
 	html: string?,
 	-- An `.html` file under the app's cache or state folders, shown as `html`.
 	html_file: string?,
-	-- An https:// page on the internet, in a session of its own.
+	-- An https:// page on the internet, in a session of its own, never
+	-- this machine or its network (macOS 14 or later).
 	url: string?,
 	-- Where: relative to the app's cache folder, or under its cache or state.
 	pdf: string,

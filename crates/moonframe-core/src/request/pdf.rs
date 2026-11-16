@@ -9,7 +9,10 @@
 use {
     super::APP,
     crate::{Data, Error, with_fields},
-    std::collections::BTreeMap,
+    std::{
+        collections::BTreeMap,
+        net::{IpAddr, Ipv4Addr},
+    },
 };
 
 /// Longest a file's name can be.
@@ -107,9 +110,14 @@ pub(super) fn pdf(msg: &Data) -> Result<Pdf, Error> {
         (Some(_), None, None) => return Err(fail("`html` is a page's text")),
         (None, Some(_), None) => PdfSource::HtmlFile(path("html_file", &["html", "htm"])?),
         (None, None, Some(Data::String(url)))
-            if url.len() <= MAX_URL && crate::is_remote_url(url) && !private_host(url) =>
+            if url.len() <= MAX_URL && crate::is_remote_url(url) =>
         {
-            PdfSource::Url(url.clone())
+            PdfSource::Url(public_url(url).ok_or_else(|| {
+                fail(
+                    "`url` is a web address (https:// or http://) on the internet, not this \
+                     machine or its network",
+                )
+            })?)
         },
         (None, None, Some(_)) => {
             return Err(fail(
@@ -137,47 +145,91 @@ pub(super) fn pdf(msg: &Data) -> Result<Pdf, Error> {
     })
 }
 
-/// Whether `url` names this machine or a private network by its address
-/// or name: a page made into a PDF reaches only the internet. A name that
-/// resolves to one is refused as the page loads (see the app's rules).
-pub fn private_host(url: &str) -> bool {
-    let Some((_, rest)) = url.split_once("://") else {
-        return true;
+/// `url` as the web view is given it, when it names a host on the
+/// internet: parsed as browsers do (WHATWG), so the host checked is the
+/// host loaded, and written back out in that form. `None` for this machine
+/// or a private network by address or name, an address with credentials or
+/// characters a browser would drop or reread (`\\`, spaces, controls), and
+/// every IPv6 literal, as the page's content rules block them all. A name
+/// that resolves to a private address is refused as it connects (the app's
+/// PDF proxy).
+fn public_url(url: &str) -> Option<String> {
+    if url
+        .chars()
+        .any(|ch| ch == '\\' || ch.is_whitespace() || ch.is_control())
+    {
+        return None;
+    }
+    let parsed = url::Url::parse(url).ok()?;
+    if !matches!(parsed.scheme(), "http" | "https")
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+    {
+        return None;
+    }
+    let public = match parsed.host()? {
+        url::Host::Domain(name) => {
+            // A name may end in a dot: `localhost.` is `localhost`.
+            let name = name.trim_end_matches('.');
+            !(name == "localhost" || name.ends_with(".localhost") || name.ends_with(".local"))
+        },
+        url::Host::Ipv4(ip) => public_address(IpAddr::V4(ip)),
+        url::Host::Ipv6(_) => false,
     };
-    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
-    // Credentials in an address are refused too, and every IPv6 literal,
-    // IPv4 ones written in it (`[::ffff:10.0.0.1]`) among them, as the
-    // app's rules block them all as the page loads.
-    if authority.contains('@') || authority.starts_with('[') {
-        return true;
+    public.then(|| parsed.into())
+}
+
+/// Whether `url` names this machine or a private network, or is not an
+/// address a PDF's page may load: see [`public_url`].
+pub fn private_host(url: &str) -> bool {
+    public_url(url).is_none()
+}
+
+/// Whether `ip` is on the public internet: not this machine, a private or
+/// shared network (`10/8`, `100.64/10`, `fc00::/7`), a link, multicast, or
+/// a range kept for documents, tests or the future. IPv6 addresses carrying
+/// an IPv4 one (mapped, NAT64, 6to4) are judged by it; Teredo is refused.
+pub fn public_address(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(ip) => public_v4(ip),
+        IpAddr::V6(ip) => {
+            let segments = ip.segments();
+            if let Some(v4) = ip.to_ipv4_mapped() {
+                return public_v4(v4);
+            }
+            let embedded = |high: u16, low: u16| {
+                Ipv4Addr::new((high >> 8) as u8, high as u8, (low >> 8) as u8, low as u8)
+            };
+            match segments {
+                // NAT64: the IPv4 address in the low 32 bits.
+                [0x64, 0xff9b, 0, 0, 0, 0, high, low] => public_v4(embedded(high, low)),
+                // 6to4: the IPv4 address after the prefix.
+                [0x2002, high, low, ..] => public_v4(embedded(high, low)),
+                // Teredo, and documentation.
+                [0x2001, 0, ..] | [0x2001, 0xdb8, ..] => false,
+                // Global unicast is `2000::/3`; the rest is local, multicast
+                // or reserved.
+                [first, ..] => first & 0xe000 == 0x2000,
+            }
+        },
     }
-    let host = authority
-        .rsplit_once(':')
-        .map_or(authority, |(host, _)| host)
-        .to_ascii_lowercase();
-    // A name may end in a dot: `localhost.` is `localhost`.
-    let host = host.trim_end_matches('.');
-    if host == "localhost" || host.ends_with(".localhost") || host.ends_with(".local") {
-        return true;
-    }
-    // A host ending in a number is an IPv4 address to a browser, in any
-    // form (`2130706433`, `0x7f.1`, `0177.0.0.1`): the usual one is
-    // checked, the rest refused.
-    let last = host.rsplit('.').next().unwrap_or_default();
-    let numeric = (!last.is_empty() && last.bytes().all(|byte| byte.is_ascii_digit()))
-        || last
-            .strip_prefix("0x")
-            .is_some_and(|hex| hex.bytes().all(|byte| byte.is_ascii_hexdigit()));
-    if !numeric {
-        return false;
-    }
-    host.parse::<std::net::Ipv4Addr>().map_or(true, |ip| {
-        ip.is_loopback()
-            || ip.is_private()
-            || ip.is_link_local()
-            || ip.is_unspecified()
-            || ip.is_broadcast()
-    })
+}
+
+fn public_v4(ip: Ipv4Addr) -> bool {
+    let [a, b, c, _] = ip.octets();
+    !(a == 0
+        || a == 10
+        || a == 127
+        || a >= 224
+        || (a == 100 && (64..128).contains(&b))
+        || (a == 169 && b == 254)
+        || (a == 172 && (16..32).contains(&b))
+        || (a == 192 && b == 168)
+        || (a == 192 && b == 0 && (c == 0 || c == 2))
+        || (a == 192 && b == 88 && c == 99)
+        || (a == 198 && (b == 18 || b == 19))
+        || (a == 198 && b == 51 && c == 100)
+        || (a == 203 && b == 0 && c == 113))
 }
 
 #[cfg(test)]
@@ -303,6 +355,16 @@ mod tests {
         assert!(!private_host("https://8.8.8.8/"));
         assert!(!private_host("https://example.com./"));
         assert!(!private_host("https://cdn.2024.example/"));
+        assert_eq!(
+            public_url("HTTPS://Example.COM:443/a b").as_deref(),
+            None,
+            "a space is refused, not reread"
+        );
+        assert_eq!(
+            public_url("HTTPS://Example.COM:443/a").as_deref(),
+            Some("https://example.com/a"),
+            "the page loads the address as checked"
+        );
         for private in [
             "http://localhost./",
             "http://LOCALHOST.:3000/",
@@ -314,8 +376,52 @@ mod tests {
             "http://0x7f.1/",
             "http://0177.0.0.1/",
             "http://127.1/",
+            "http://100.64.0.1/",
+            "http://198.18.0.1/",
+            "http://224.0.0.1/",
+            "http://255.255.255.255/",
+            "http://example.com\\@127.0.0.1/",
+            "http://127.0.0.1\\.example.com/",
+            "http://exa\tmple.com/",
+            "http:/\\127.0.0.1/",
+            "ftp://example.com/",
         ] {
             assert!(private_host(private), "{private}");
+        }
+    }
+
+    #[test]
+    fn only_the_public_internet_is_public() {
+        for public in [
+            "8.8.8.8",
+            "1.1.1.1",
+            "2606:4700::1111",
+            "::ffff:8.8.8.8",
+            "64:ff9b::808:808",
+        ] {
+            assert!(public_address(public.parse().unwrap()), "{public}");
+        }
+        for private in [
+            "127.0.0.1",
+            "10.1.2.3",
+            "100.100.1.1",
+            "172.31.255.255",
+            "192.168.0.1",
+            "169.254.169.254",
+            "0.0.0.0",
+            "239.1.1.1",
+            "::1",
+            "::",
+            "fd00::1",
+            "fe80::1",
+            "ff02::1",
+            "::ffff:127.0.0.1",
+            "64:ff9b::a00:1",
+            "2002:c0a8:1::1",
+            "2001::1",
+            "2001:db8::1",
+        ] {
+            assert!(!public_address(private.parse().unwrap()), "{private}");
         }
     }
 }

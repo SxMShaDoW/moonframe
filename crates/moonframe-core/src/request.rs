@@ -24,7 +24,7 @@ pub use {
     edit::{Edit, EditChange, Splice},
     guard::Guard,
     icon::{AppIcon, ICON_TYPES},
-    pdf::{Paper, Pdf, PdfSource, private_host},
+    pdf::{Paper, Pdf, PdfSource, private_host, public_address},
     pick::{Pick, PickKind},
     window::WindowRequest,
 };

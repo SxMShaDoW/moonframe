@@ -67,7 +67,7 @@ pub use {
     request::{
         APP, AppIcon, Appearance, Awake, Devtools, DevtoolsPlace, Dock, Edit, EditChange, Guard,
         ICON_TYPES, MAX_SOURCE, Notification, Paper, Pdf, PdfSource, Pick, PickKind, Request,
-        SOUND_TYPES, Sound, Splice, WindowRequest, private_host,
+        SOUND_TYPES, Sound, Splice, WindowRequest, private_host, public_address,
     },
     roots::{AppLayer, Roots, mod_name},
     schema::{

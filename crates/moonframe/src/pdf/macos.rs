@@ -1,6 +1,7 @@
 //! PDFs with WebKit: a `WKWebView` in an offscreen window, a session of its
 //! own (`nonPersistentDataStore`), content rules that keep it off the
-//! network (HTML) or off this machine and its network (a web page), then
+//! network (HTML) or off this machine and its network (a web page, whose
+//! connections all go through the PDF proxy too), then
 //! its print operation, saving to a file without a panel.
 
 #![allow(
@@ -58,7 +59,8 @@ const OFFLINE_FILE: &str = r#"[
 ]"#;
 
 /// For a web page: the web, never this machine or its network by address
-/// (rules have no alternation, so one each), nor files.
+/// (rules have no alternation, so one each), nor files. Text alone: the
+/// proxy every connection goes through checks the address it reaches.
 const ONLINE: &str = r#"[
     {"trigger": {"url-filter": "^file:"}, "action": {"type": "block"}},
     {"trigger": {"url-filter": "^https?://localhost\\.?[:/]"}, "action": {"type": "block"}},
@@ -71,6 +73,10 @@ const ONLINE: &str = r#"[
     {"trigger": {"url-filter": "^https?://172\\.1[6-9]\\."}, "action": {"type": "block"}},
     {"trigger": {"url-filter": "^https?://172\\.2[0-9]\\."}, "action": {"type": "block"}},
     {"trigger": {"url-filter": "^https?://172\\.3[01]\\."}, "action": {"type": "block"}},
+    {"trigger": {"url-filter": "^https?://100\\.6[4-9]\\."}, "action": {"type": "block"}},
+    {"trigger": {"url-filter": "^https?://100\\.[7-9][0-9]\\."}, "action": {"type": "block"}},
+    {"trigger": {"url-filter": "^https?://100\\.1[01][0-9]\\."}, "action": {"type": "block"}},
+    {"trigger": {"url-filter": "^https?://100\\.12[0-7]\\."}, "action": {"type": "block"}},
     {"trigger": {"url-filter": "^https?://\\["}, "action": {"type": "block"}}
 ]"#;
 
@@ -242,9 +248,20 @@ fn start(job: Pending, rules: &WKContentRuleList, main: MainThreadMarker) {
     let online = matches!(job.source, Source::Url(_));
     // SAFETY: a fresh configuration on the main thread, given its own
     // store, script setting and rules before any view takes it.
+    // SAFETY: a fresh session of its own, on the main thread.
+    let store = unsafe { WKWebsiteDataStore::nonPersistentDataStore(main) };
+    // A web page connects only through the proxy, which reaches the public
+    // internet alone; the content rules below are only a first check.
+    if online
+        && let Err(problem) =
+            super::proxy::port().and_then(|port| super::network::through_proxy(&store, port))
+    {
+        let _ = job.answer.send(Err(problem));
+        return;
+    }
     let configuration = unsafe {
         let configuration = WKWebViewConfiguration::new(main);
-        configuration.setWebsiteDataStore(&WKWebsiteDataStore::nonPersistentDataStore(main));
+        configuration.setWebsiteDataStore(&store);
         configuration
             .defaultWebpagePreferences()
             .setAllowsContentJavaScript(online);
