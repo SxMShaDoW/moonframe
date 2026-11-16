@@ -54,6 +54,7 @@ pub mod gestures;
 mod history;
 mod host_menus;
 mod hosted;
+mod hotkeys;
 mod init;
 mod input;
 mod inspect;
@@ -79,6 +80,7 @@ mod render;
 #[cfg(feature = "capture")]
 mod render_entry;
 mod settings;
+mod status_item;
 mod terminal;
 mod theme_picker;
 mod themes;
