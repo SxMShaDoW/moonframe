@@ -27,8 +27,9 @@ use {
     },
     objc2_foundation::{NSError, NSPoint, NSRect, NSSize, NSString, NSURL, NSURLRequest},
     objc2_web_kit::{
-        WKContentRuleList, WKContentRuleListStore, WKNavigation, WKNavigationDelegate, WKWebView,
-        WKWebViewConfiguration, WKWebsiteDataStore,
+        WKContentRuleList, WKContentRuleListStore, WKNavigation, WKNavigationDelegate,
+        WKUserScript, WKUserScriptInjectionTime, WKWebView, WKWebViewConfiguration,
+        WKWebsiteDataStore,
     },
     std::{
         cell::{Cell, RefCell},
@@ -272,6 +273,9 @@ fn start(job: Pending, rules: &WKContentRuleList, main: MainThreadMarker) {
         configuration.preferences().setShouldPrintBackgrounds(true);
         configuration
     };
+    if online {
+        without_webrtc(&configuration, main);
+    }
     let frame = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(width, 1000.0));
     // SAFETY: a fresh view with the configuration above.
     let view = unsafe {
@@ -330,6 +334,34 @@ fn start(job: Pending, rules: &WKContentRuleList, main: MainThreadMarker) {
             delegate,
         })
     });
+}
+
+/// Takes WebRTC from a web page: its connections are its own, not the
+/// session's, so they would pass the proxy by. WebKit's switch for it
+/// where the system has one, and the page's constructors removed in every
+/// frame before its script runs either way.
+fn without_webrtc(configuration: &WKWebViewConfiguration, main: MainThreadMarker) {
+    const SCRIPT: &str = "for (const name of ['RTCPeerConnection', 'webkitRTCPeerConnection', \
+                          'RTCDataChannel', 'RTCRtpSender', 'RTCRtpReceiver', \
+                          'RTCRtpTransceiver', 'RTCIceCandidate', 'RTCIceTransport', \
+                          'RTCSessionDescription']) { try { delete window[name]; } catch {} }";
+    // SAFETY: the configuration's own preferences, asked whether they
+    // answer WebKit's switch before it is called with a flag.
+    unsafe {
+        let preferences = configuration.preferences();
+        let switchable: bool =
+            msg_send![&*preferences, respondsToSelector: sel!(_setPeerConnectionEnabled:)];
+        if switchable {
+            let () = msg_send![&*preferences, _setPeerConnectionEnabled: false];
+        }
+        let script = WKUserScript::initWithSource_injectionTime_forMainFrameOnly(
+            WKUserScript::alloc(main),
+            &NSString::from_str(SCRIPT),
+            WKUserScriptInjectionTime::AtDocumentStart,
+            false,
+        );
+        configuration.userContentController().addUserScript(&script);
+    }
 }
 
 /// What the delegate prints, and to whom it answers.
