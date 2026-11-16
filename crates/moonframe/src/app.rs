@@ -4,7 +4,7 @@
 use {
     crate::{
         actions::*,
-        alerts::{Alerts, Posted},
+        alerts::Alerts,
         backends::Backends,
         browser::Browsers,
         color::rgba_color,
@@ -62,8 +62,10 @@ mod machine;
 mod main_window;
 mod measuring;
 mod menu;
+mod notifications;
 mod omarchy;
 mod panes;
+mod pdfs;
 mod picking;
 mod problems;
 mod quick_inspect;
@@ -249,8 +251,15 @@ impl MoonframeApp {
         report(&workspace);
         cx.observe_window_bounds(window, |this, window, cx| this.sync_window(window, cx))
             .detach();
-        cx.observe_window_activation(window, |this, window, cx| this.sync_window(window, cx))
-            .detach();
+        cx.observe_window_activation(window, |this, window, cx| {
+            // The user may have allowed or refused notifications in the
+            // system's settings while away.
+            if window.is_window_active() {
+                crate::alerts::refresh();
+            }
+            this.sync_window(window, cx);
+        })
+        .detach();
         // The system's appearance, which `system` follows as it changes.
         cx.observe_window_appearance(window, |this, window, cx| {
             this.system_dark = is_dark(window.appearance());
@@ -817,6 +826,7 @@ impl MoonframeApp {
             Request::Restart(name) => self.restart_provider(from, &name, cx),
             Request::Devtools(request) => self.devtools_request(from, request, cx),
             Request::Share(request) => self.share_request(from, request, window, cx),
+            Request::Pdf(request) => self.pdf_request(from, request, cx),
             Request::Open(url) => {
                 if self.alerts.may_open() {
                     cx.open_url(&url);
@@ -824,22 +834,8 @@ impl MoonframeApp {
                     tracing::warn!("{from}: `app:open` asked too often; {url} not opened");
                 }
             },
-            Request::Notify(notification) => match self.alerts.notify(from, &notification) {
-                Ok(Posted::System) => {},
-                Ok(Posted::Toast) => {
-                    let text = if notification.body.is_empty() {
-                        notification.title.clone()
-                    } else {
-                        format!("{}: {}", notification.title, notification.body)
-                    };
-                    self.show_toast_for(text.into(), NOTICE, cx);
-                    // A click on it does what one on the system's would.
-                    if let Some((shown, _)) = &self.toast {
-                        self.toast_notice = Some((*shown, from.to_owned(), notification.id));
-                    }
-                },
-                Err(problem) => tracing::warn!("{from}: {problem}"),
-            },
+            Request::Notify(notification) => self.notify_request(from, notification, cx),
+            Request::AskToNotify => self.ask_to_notify(from),
             Request::Theme { light, dark } => {
                 if let Err(problem) = self.set_themes(light.as_deref(), dark.as_deref(), cx) {
                     self.workspace
