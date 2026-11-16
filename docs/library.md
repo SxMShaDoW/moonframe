@@ -109,6 +109,7 @@ ship only their selected components.
 | `video` | `ui.video`: live frames from another process in a 16-bit, colour-managed Metal view (macOS). Off by default. See [Live video](video.md). |
 | `map` | `ui.map` street maps: tiles from OpenStreetMap and other listed providers, pins, and routes along streets, fetched over HTTP. Off by default. |
 | `map-benchmark` | A `ui.map` run with `MOONFRAME_MAP_BENCHMARK` drives itself through input events, reports what that cost, and quits. For measuring; off by default. |
+| `map-vector` | `vector-*` map providers: OpenFreeMap vector tiles drawn on the GPU by [gpui-maps](https://github.com/swatmobility/gpui-maps), tiltable, under the same pins, routes and buttons as the raster map. Off by default: it brings in wgpu and the map engine. |
 | `markdown` | Rich `ui.markdown` rendering (headings, lists, tables, links and code). |
 | `prose` | The writing editor for `ui.input` with `prose`, `dim` or `typewriter`. Ordinary single-line and multiline inputs remain available without it. |
 | `sealed` | Staged app resources instead of the full embedded toolbox. |

@@ -9,7 +9,7 @@
 //! request no map has wanted for a while is dropped unfetched.
 
 use {
-    moonframe_core::MapProvider,
+    moonframe_core::{MapProvider, TileSource},
     std::{
         collections::{HashMap, VecDeque},
         io::Read as _,
@@ -67,7 +67,7 @@ impl Tile {
     }
 
     fn url(&self, key: Option<&str>) -> String {
-        let source = self.provider.source();
+        let source = source(self.provider);
         let retina = if self.retina {
             "@2x"
         } else {
@@ -94,12 +94,28 @@ pub(super) fn level(provider: MapProvider, zoom: f64, scale: f32) -> u8 {
     };
     (zoom + finer)
         .round()
-        .clamp(0.0, f64::from(provider.source().max_zoom)) as u8
+        .clamp(0.0, f64::from(source(provider).max_zoom)) as u8
 }
 
 /// Whether the provider has `@2x` tiles.
 pub(super) fn has_retina(provider: MapProvider) -> bool {
-    provider.source().url.contains("{r}")
+    source(provider).url.contains("{r}")
+}
+
+/// Where the provider's raster tiles come from, and whose they are. Built
+/// without `map-vector`, a `vector-*` provider has none of its own:
+/// OpenStreetMap's stand in, so the map still shows streets.
+pub(super) fn source(provider: MapProvider) -> TileSource {
+    fetched_from(provider).source()
+}
+
+/// The provider whose server `provider`'s tiles are fetched from.
+fn fetched_from(provider: MapProvider) -> MapProvider {
+    if cfg!(feature = "map-vector") || !provider.vector() {
+        provider
+    } else {
+        MapProvider::OpenStreetMap
+    }
 }
 
 /// What is known of a tile this run.
@@ -288,7 +304,7 @@ fn forget(shared: &mut Shared, tile: &Tile) {
 
 /// The most tiles fetched from `provider` at once.
 fn connections(provider: MapProvider) -> usize {
-    match provider {
+    match fetched_from(provider) {
         MapProvider::OpenStreetMap => OSM_WORKERS,
         _ => WORKERS,
     }

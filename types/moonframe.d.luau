@@ -1254,14 +1254,21 @@ type VideoProps = {
 	[number]: string,
 }
 
--- Where a `ui.map` gets its tiles. `openstreetmap` and the `carto-*` maps
--- need no key; the others need the provider's API key in `key`.
+-- Where a `ui.map` gets its tiles. `openstreetmap`, the `carto-*` maps and
+-- the `vector-*` maps need no key; the others need the provider's API key in
+-- `key`. The `vector-*` maps are OpenFreeMap vector tiles drawn on the GPU by
+-- gpui-maps, in builds with the `map-vector` feature.
 type MapProvider =
 	"openstreetmap"
 	| "carto-light"
 	| "carto-dark"
 	| "carto-voyager"
 	| "esri-streets"
+	| "vector-liberty"
+	| "vector-positron"
+	| "vector-streets"
+	| "vector-dark"
+	| "vector-graphite"
 	| "stadia-smooth"
 	| "stadia-smooth-dark"
 	| "maptiler-streets"

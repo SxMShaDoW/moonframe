@@ -8,6 +8,7 @@ use {
     super::{
         Frame,
         routing::{self, Ask, Routed, Way},
+        tilt::Tilt,
     },
     crate::{color::ThemeColor, render::pointer::Sender},
     gpui_kit::{component::ActiveTheme, *},
@@ -35,6 +36,7 @@ struct Line {
 /// What the map's routes need painted.
 pub(super) struct Lines {
     frame: Frame,
+    tilt: Tilt,
     lines: Vec<Line>,
 }
 
@@ -47,7 +49,7 @@ pub(super) struct Ways {
 
 /// The map's routes as lines in `frame`, asking the router for those
 /// given as stops.
-pub(super) fn lines(map: &Map, frame: Frame, cx: &App) -> (Lines, Ways) {
+pub(super) fn lines(map: &Map, frame: Frame, tilt: Tilt, cx: &App) -> (Lines, Ways) {
     let theme = cx.theme();
     let mut ways = Ways {
         waiting: false,
@@ -75,7 +77,7 @@ pub(super) fn lines(map: &Map, frame: Frame, cx: &App) -> (Lines, Ways) {
                 },
             };
             Line {
-                corners: frame.route(&places),
+                corners: tilt.route(&frame, &places),
                 color: route.color.map(|color| color.hsla(theme)),
                 stroke: route.stroke,
                 dashed: route.dashed || pending,
@@ -83,7 +85,7 @@ pub(super) fn lines(map: &Map, frame: Frame, cx: &App) -> (Lines, Ways) {
             }
         })
         .collect();
-    (Lines { frame, lines }, ways)
+    (Lines { frame, tilt, lines }, ways)
 }
 
 impl Lines {
@@ -111,7 +113,7 @@ impl Lines {
                     };
                     let color = line.color.unwrap_or(fallback);
                     let stroke = line.stroke;
-                    for copy in self.frame.copies(low, high, stroke + 3.0) {
+                    for copy in self.tilt.copies(&self.frame, low, high, stroke + 3.0) {
                         let (dx, dy) = self.frame.copy_offset(copy);
                         let at = |&(x, y): &(f32, f32)| {
                             point(bounds.origin.x + px(x + dx), bounds.origin.y + px(y + dy))
