@@ -80,6 +80,7 @@ mod render;
 #[cfg(feature = "capture")]
 mod render_entry;
 mod settings;
+mod share;
 mod status_item;
 mod terminal;
 mod theme_picker;

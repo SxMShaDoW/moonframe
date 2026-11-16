@@ -71,6 +71,7 @@ mod pdfs;
 mod picking;
 mod problems;
 mod quick_inspect;
+mod sharing;
 mod toasts;
 mod updates;
 mod view;
@@ -836,6 +837,7 @@ impl MoonframeApp {
             Request::Dock(dock) => self.dock_request(from, &dock),
             Request::Restart(name) => self.restart_provider(from, &name, cx),
             Request::Devtools(request) => self.devtools_request(from, request, cx),
+            Request::Share(request) => self.share_request(from, request, window, cx),
             Request::StatusItem(request) => self.status_item_request(from, request, cx),
             Request::Hotkey(request) => self.hotkey_request(from, request, cx),
             Request::Pdf(request) => self.pdf_request(from, request, cx),

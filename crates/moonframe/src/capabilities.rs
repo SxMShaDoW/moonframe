@@ -40,6 +40,7 @@ fn compiled() -> std::collections::BTreeMap<String, bool> {
         "prose",
         "restart",
         "sealed",
+        "share",
         "shell",
         "socket",
         "speech",
