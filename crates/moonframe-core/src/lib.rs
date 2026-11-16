@@ -66,8 +66,9 @@ pub use {
     read::MAX_DOCUMENT,
     request::{
         APP, AppIcon, Appearance, Awake, Devtools, DevtoolsPlace, Dock, Edit, EditChange, Guard,
-        ICON_TYPES, MAX_SOURCE, Notification, Paper, Pdf, PdfSource, Pick, PickKind, Request,
-        SOUND_TYPES, Sound, Splice, WindowRequest, private_host, public_address,
+        Hotkey, ICON_TYPES, MAX_SOURCE, Notification, Paper, Pdf, PdfSource, Pick, PickKind,
+        Request, SOUND_TYPES, Sound, Splice, StatusEntry, StatusIcon, StatusItem, StatusLook,
+        WindowRequest, private_host, public_address,
     },
     roots::{AppLayer, Roots, mod_name},
     schema::{

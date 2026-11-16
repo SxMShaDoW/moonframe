@@ -186,6 +186,7 @@ impl Hub {
         );
         menu_actions(cx);
         hear_notification_clicks(cx);
+        menu_bar::listen(cx);
         links::deliver(cx);
         take_panes(&folders, cx);
         #[cfg(feature = "updates")]
