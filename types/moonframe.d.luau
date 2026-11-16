@@ -2086,6 +2086,9 @@ type App = {
 	links: { [string]: ProviderLink }?,
 	-- Nil until a mod first asks `app:awake`.
 	awake: AwakeState?,
+	-- Whether the user lets the app post notifications (`app:notify`);
+	-- nil until the system says, read again as a window comes forward.
+	notifications: NotificationPermission?,
 	-- Nil unless the last run panicked.
 	crash: CrashReport?,
 	-- Cargo feature names mapped to whether this host compiled them in.
@@ -2116,6 +2119,9 @@ type App = {
 -- What `{ to = "app:notify", msg = ... }` posts. A click on it brings the
 -- window forward and sends the posting mod, if it subscribes to
 -- `app/notification`, `{ topic = "app/notification", value = NotificationClick }`.
+-- `{ ask = true }` instead posts nothing and asks the user to allow
+-- notifications now (once; the first one posted asks otherwise), with
+-- `app.notifications` saying the answer.
 type NotifyMsg = {
 	-- At most 256 bytes.
 	title: string,
@@ -2123,11 +2129,38 @@ type NotifyMsg = {
 	body: string?,
 	-- 1 to 128 of a-z A-Z 0-9 - _ . : /, handed back on a click.
 	id: string?,
-}
+	-- Takes the place of the ones this mod posted with the same `id`
+	-- (this run or an earlier one) rather than adding to them. Needs `id`.
+	replace: boolean?,
+} | { ask: true }
+
+-- Whether the user lets the app post notifications, in
+-- `app.notifications`: "in-window" where the system shows none (Linux,
+-- Windows, a bare binary) and a toast shows them; "denied" where the user
+-- turned them off, toasts showing them too; "undecided" until the user is
+-- asked.
+type NotificationPermission = "allowed" | "denied" | "undecided" | "in-window"
 
 type NotificationClick = {
 	id: string?,
 	clicked: boolean,
+}
+
+-- A link to one of the app's URL schemes (`schemes` in its moonframe.toml),
+-- opened in a browser or another app: a module that subscribes to `app/url`
+-- hears `{ topic = "app/url", value = AppUrl }`. Anyone can open one: treat
+-- what it carries as untrusted.
+type AppUrl = {
+	-- The whole link, as opened.
+	url: string,
+	-- Lowercase, one the app claims.
+	scheme: string,
+	-- `notes://host/path` has one; `notes:/path` has none.
+	host: string?,
+	path: string,
+	-- Each parameter decoded, the first of a name.
+	query: { [string]: string },
+	fragment: string?,
 }
 
 -- What `{ to = "app:pick", msg = ... }` opens: the system's panel to open
@@ -2146,6 +2179,23 @@ type PickMsg = {
 	-- A save panel's suggested name and starting folder.
 	name: string?,
 	folder: string?,
+}
+
+-- What `{ to = "app:pdf", msg = ... }` makes: a page as a PDF file (macOS).
+-- One of `html`, `html_file` and `url`. With `reply`, the mod hears it back
+-- with `path` (the file written) or `error`.
+type PdfMsg = {
+	-- The page's text: no script, nothing from the network but `data:`.
+	html: string?,
+	-- An `.html` file under the app's cache or state folders, shown as `html`.
+	html_file: string?,
+	-- An https:// page on the internet, in a session of its own.
+	url: string?,
+	-- Where: relative to the app's cache folder, or under its cache or state.
+	pdf: string,
+	-- The system's paper unless given.
+	paper: ("a4" | "letter")?,
+	reply: Data?,
 }
 
 -- What `{ to = "app:edit", msg = ... }` does to the sending mod's input
@@ -2197,7 +2247,7 @@ type DevtoolsMsg =
 -- in the Dock, changed at once until the app quits; macOS only),
 -- `"app:notify"` (`msg` a `NotifyMsg`), `"app:pick"` (`msg` a `PickMsg`),
 -- `"app:edit"` (`msg` an `EditMsg`), `"app:window"` (`msg` a `WindowMsg`),
--- `"app:devtools"` (`msg` a `DevtoolsMsg`) and `"app:open"` (`msg` a web address, opened in the system's browser).
+-- `"app:devtools"` (`msg` a `DevtoolsMsg`), `"app:pdf"` (`msg` a `PdfMsg`) and `"app:open"` (`msg` a web address, opened in the system's browser).
 type Send = {
 	to: string,
 	msg: Data,

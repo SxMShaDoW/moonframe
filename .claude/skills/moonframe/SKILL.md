@@ -81,9 +81,9 @@ keeps the user's window running; Rust changes don't.
 
 **"Show me some ideas first."** When the user wants options or mockups
 before a change, use the **moonframe-mockups** skill
-(`.claude/skills/moonframe-mockups`): variants drawn live in a throwaway
-`mods/mockup` in the user's folder, opened in a tab, applied only once the
-user picks one.
+(`.claude/skills/moonframe-mockups`): variants written as one Luau file on
+the app's components, checked and shown by `moonframe mockup` (PNGs in a
+Sheprd tab, or live in a Mockups tab), applied only once the user picks one.
 
 **"Add X here."** Read `~/.cache/moonframe/selection.md`
 (see "Here: the user's selection"). Open the file at the line it gives,
@@ -719,9 +719,45 @@ return mod {
 - `provider/<name>` carries a provider's data each time it publishes, for a
   mod that must react (not only redraw); views still read `app.<name>`.
 - Names are 1 to 128 of `a-z A-Z 0-9 - _ . / :`; `provider/` is the
-  providers', and `app/` the app's own (`app/inspect`, `app/notification`). Previews (the Components window) hear nothing.
+  providers', and `app/` the app's own (`app/inspect`, `app/notification`,
+  `app/url`). Previews (the Components window) hear nothing.
 - Use a topic when several modules share a value; use `to = "<mod>"` when
   one module tells another.
+
+**Links to the app (`app/url`).** An app that claims URL schemes
+(`schemes = ["notes"]` in its `moonframe.toml`, or `.url_scheme("notes")`
+on the library) opens its links: a `notes:` link opened in a browser,
+another app or with `open` brings the app and its front main window
+forward, and every module there that subscribes to `app/url` hears it,
+read: `{ topic = "app/url", value = { url, scheme, host?, path, query,
+fragment? } }`. `query` holds each parameter decoded (`+` and `%20` are
+spaces), the first of a name; `host` is there for `notes://host/path`,
+not for `notes:/path`. It is news, not kept: a mod loading later does not
+hear it. A link that starts the app waits for its window.
+
+- Only a bundle hears links (macOS: `just bundle-app NAME`, or an app on
+  the library's `bundle`), once it has been opened once; a run from source
+  hears none.
+- Any web page can ask to open one, so treat it as input from anyone: ask
+  the user before acting on what it carries (saving a page, sending
+  something), and read only the paths you expect. Links of a scheme the
+  app did not claim, longer than 8 KiB, or more than 5 in 10 s are dropped.
+- A provider hears a link through a mod: the mod sends it on.
+
+```lua
+return mod {
+	subscribe = { "app/url" },
+	update = function(state, msg)
+		if type(msg) == "table" and msg.topic == "app/url" then
+			local link = msg.value
+			if link.path == "/capture" and link.query.url then
+				state.offer = { url = link.query.url, title = link.query.title }   -- shown for the user to confirm
+			end
+		end
+	end,
+	view = function(state) return ui.text(if state.offer then state.offer.url else "") end,
+}
+```
 
 ## Asking the app
 
@@ -804,16 +840,28 @@ end
   absolute, and inside the app's folders. Never a URL. Sounds closer than
   150 ms apart are dropped. macOS plays them (`NSSound`); Linux with
   `paplay` or `aplay` when installed; Windows plays none yet (logged).
-- `app:notify`, `msg` `{ title, body?, id? }`: a system notification. macOS
+- `app:notify`, `msg` `{ title, body?, id?, replace? }`: a system notification. macOS
   posts it through the Notification Center when the app runs as a bundle
   (an installed app, `just bundle`, `just bundle-app`), asking the user to
   allow notifications the first time; it shows even when the window is in
   front, so check `app.window.active` to alert only when the user is not
   looking. A run from source (`just run`, a bare binary), Linux and Windows
-  show it as a toast in the window instead, for 5 s. Clicking either brings
+  show it as a toast in the window instead, for 5 s, as does macOS once the
+  user turns notifications off for the app. Clicking either brings
   the app and its window forward and tells the mod that posted it, if it subscribes to
   `app/notification`: `{ topic = "app/notification", value = { id, clicked
-  = true } }`. At most 5 notifications in 10 s are posted.
+  = true } }`; a click that starts the app waits for its window. Put what
+  to open in `id` (a page, a thread). `replace = true` (with an `id`) takes
+  the place of the mod's earlier ones with that `id`, from this run or an
+  earlier one, rather than stacking: "Uploading…" then "Uploaded".
+  At most 5 notifications in 10 s are posted.
+- `app:notify`, `msg` `{ ask = true }`: asks the user to allow notifications
+  now, posting none, as a button that turns them on would; the system asks
+  only once, and at most 2 asks in 10 s are made. `app.notifications` says
+  how it stands: `"allowed"`, `"denied"` (turned off in System Settings:
+  toasts show them), `"undecided"` (not asked yet), or `"in-window"` (no
+  system notifications here: toasts show them); nil until the system says,
+  and read again each time a window comes forward.
 
 ```lua
 return mod {
@@ -933,6 +981,31 @@ return state, { { to = "app:window", msg = { open = "settings", send = { page = 
   Other schemes (`file`, an app's own) are the sender's error. At most 3
   pages open in 10 s. A control does it on a click: `ui.row { to =
   "app:open", msg = pr.url, ... }`.
+- `app:pdf`, `msg` `{ html | html_file | url, pdf, paper?, reply? }`: a page
+  made into a PDF file, as a reader saves an article (macOS, with the
+  `browser` feature). The page is `html` (text, up to 1 MiB), `html_file`
+  (an `.html` file under the app's cache or state folders, for bigger
+  pages a provider wrote) or `url` (an `https://` page on the internet).
+  HTML and `html_file` show with no script and nothing from the network:
+  inline pictures as `data:`. A `url` page runs its script, in a session of
+  its own (none of the app's cookies), and never reaches this machine or
+  its network by address. It loads in an offscreen view and prints to
+  paper pages (`paper = "a4"` or `"letter"`, else the system's; half-inch
+  margins; backgrounds print; CSS `@page` and `break-before: page` work).
+  `pdf` is where: a path relative to the app's cache folder
+  (`~/.cache/<app>`), or one under its cache or state folders; anywhere
+  else is the sender's error. With `reply`, the mod hears it back with
+  `path` (the file written) or `error` (it did not load, took over 30 s,
+  ...). At most 3 at once. Share the file on with `app:share`, or have a
+  provider move it.
+
+```lua
+-- the article the mod shows, saved as a PDF
+ui.button { "Save as PDF", icon = "download", to = "app:pdf",
+	msg = { html = article_html, pdf = "articles/" .. id .. ".pdf", reply = { saved = id } } }
+-- in update: if msg.saved then state.files[msg.saved] = msg.path or false end
+```
+
 - A request the app cannot read (an unknown command, a misspelled
   `app:<what>`) is the sender's error, shown as an `update` error.
 - Previews (the Components window) ask nothing, and a provider's answer
@@ -2684,7 +2757,7 @@ instead.
 | `just check` | loads everything headlessly (your folder and packages included), then adds what an open window of the app hit (`window:` lines); run after each edit |
 | `just check-builtin` | the same for `app/` alone |
 | `just types` | strict Luau type check against `types/moonframe.d.luau` |
-| `just screenshot OUT PID` | captures the window of the process you started |
+| `just screenshot OUT PID` | captures the window of the process you started (macOS, Linux on X11 or Sway/Hyprland, Windows from Git Bash) |
 | `just component-shot NAME [OUT]` | captures a component's preview page from a background instance it starts and stops; never takes focus |
 | `just run` | opens the window on `app/` (the user usually has one open) |
 | `just providers` | builds and lints the Wasm providers |
