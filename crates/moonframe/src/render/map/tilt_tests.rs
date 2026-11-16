@@ -83,9 +83,28 @@ fn a_tilted_route_is_its_corners_and_shows_one_world() {
         .iter()
         .filter_map(|&[lat, lon]| tilt.at(&frame, lat, lon))
         .collect();
-    assert_eq!(tilt.route(&frame, &PLACES), corners);
+    assert_eq!(tilt.route(&frame, &PLACES), [corners]);
     assert_eq!(
         tilt.copies(&frame, (-5000.0, 0.0), (5000.0, 600.0), 0.0),
         0..=0
     );
+}
+
+#[test]
+fn a_tilted_route_breaks_where_it_passes_the_eye() {
+    let frame = frame(0.0);
+    let tilt = Tilt(Some(camera(&frame, 60.0)));
+    let [lat, lon] = frame.middle();
+    // Far south, behind a camera looking north.
+    let behind = [lat - 60.0, lon];
+    assert_eq!(tilt.at(&frame, behind[0], behind[1]), None);
+    let route = [PLACES[0], PLACES[1], behind, PLACES[2], PLACES[3]];
+    let at = |[lat, lon]: [f64; 2]| tilt.at(&frame, lat, lon);
+    let pieces = tilt.route(&frame, &route);
+    assert_eq!(pieces, [
+        [at(PLACES[0]), at(PLACES[1])].map(Option::unwrap).to_vec(),
+        [at(PLACES[2]), at(PLACES[3])].map(Option::unwrap).to_vec(),
+    ]);
+    // Past the eye at either end leaves no empty piece.
+    assert_eq!(tilt.route(&frame, &[behind, PLACES[0], behind]).len(), 1);
 }

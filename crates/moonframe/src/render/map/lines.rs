@@ -23,7 +23,8 @@ use {
 /// How faint a route is drawn straight when its router failed.
 const PENDING: f32 = 0.45;
 
-/// One line to paint, in pixels from the box's corner.
+/// One unbroken line to paint, in pixels from the box's corner: a route,
+/// or a piece of one a tilted map breaks.
 struct Line {
     corners: Vec<(f32, f32)>,
     color: Option<Hsla>,
@@ -59,7 +60,7 @@ pub(super) fn lines(map: &Map, frame: Frame, tilt: Tilt, cx: &App) -> (Lines, Wa
         .routes
         .iter()
         .enumerate()
-        .map(|(index, route)| {
+        .flat_map(|(index, route)| {
             let (places, pending) = match Ask::of(route) {
                 None => (route.points.clone(), false),
                 Some(ask) => match routing::way(&ask) {
@@ -76,13 +77,16 @@ pub(super) fn lines(map: &Map, frame: Frame, tilt: Tilt, cx: &App) -> (Lines, Wa
                     Routed::Failed(_) => (route.via.clone(), true),
                 },
             };
-            Line {
-                corners: tilt.route(&frame, &places),
-                color: route.color.map(|color| color.hsla(theme)),
-                stroke: route.stroke,
-                dashed: route.dashed || pending,
-                pending,
-            }
+            let color = route.color.map(|color| color.hsla(theme));
+            tilt.route(&frame, &places)
+                .into_iter()
+                .map(move |corners| Line {
+                    corners,
+                    color,
+                    stroke: route.stroke,
+                    dashed: route.dashed || pending,
+                    pending,
+                })
         })
         .collect();
     (Lines { frame, tilt, lines }, ways)

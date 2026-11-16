@@ -31,15 +31,27 @@ impl Tilt {
         }
     }
 
-    /// A route's corners in the box. Tilted, the corners past the eye are
-    /// left out.
-    pub(super) fn route(self, frame: &Frame, places: &[[f64; 2]]) -> Vec<(f32, f32)> {
+    /// A route's corners in the box, in the pieces drawn: one, flat.
+    /// Tilted, a corner past the eye is left out and breaks the route
+    /// there, so the corners either side of it are not joined by a line
+    /// the route never takes.
+    pub(super) fn route(self, frame: &Frame, places: &[[f64; 2]]) -> Vec<Vec<(f32, f32)>> {
         match self.0 {
-            None => frame.route(places),
-            Some(_) => places
-                .iter()
-                .filter_map(|&[lat, lon]| self.at(frame, lat, lon))
-                .collect(),
+            None => vec![frame.route(places)],
+            Some(_) => {
+                let (mut pieces, mut piece) = (Vec::new(), Vec::new());
+                for &[lat, lon] in places {
+                    match self.at(frame, lat, lon) {
+                        Some(corner) => piece.push(corner),
+                        None if !piece.is_empty() => pieces.push(std::mem::take(&mut piece)),
+                        None => {},
+                    }
+                }
+                if !piece.is_empty() {
+                    pieces.push(piece);
+                }
+                pieces
+            },
         }
     }
 

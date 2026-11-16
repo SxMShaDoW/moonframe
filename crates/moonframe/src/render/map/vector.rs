@@ -27,10 +27,11 @@ use {
 /// zoom counting 256-pixel tiles and bearing in degrees.
 type Pose = (f64, f64, f64, f64);
 
-/// One map's gpui-maps view, and the provider it was built for.
+/// What the map `key` knows of its gpui-maps view. The view itself is held
+/// by the map's layer element ([`Held`]), so it goes once the map is no
+/// longer drawn -- its window closed, or the map gone from it.
 struct Kept {
-    provider: MapProvider,
-    view: Entity<MapView>,
+    view: WeakEntity<MapView>,
     /// Where gpui-maps' camera was, last seen: a camera found elsewhere
     /// moved under the user's hand.
     seen: Option<Pose>,
@@ -42,6 +43,13 @@ struct Kept {
     /// What the map tells its view when it moves, and how.
     moved: Option<Data>,
     sender: Sender,
+}
+
+/// A map's gpui-maps view and the watch on its camera, kept in its layer's
+/// element state for as long as the map is drawn frame after frame.
+struct Held {
+    provider: MapProvider,
+    view: Entity<MapView>,
     _watch: Subscription,
 }
 
@@ -163,63 +171,83 @@ fn camera_moved(key: &str, map: &Entity<MapView>, window: AnyWindowHandle, cx: &
 pub(super) fn tilt(key: &str, cx: &App) -> Tilt {
     VIEWS
         .with_borrow(|views| {
-            let camera = *views.get(key)?.view.read(cx).camera();
+            let camera = *views.get(key)?.view.upgrade()?.read(cx).camera();
             (camera.pitch.abs() > 1e-4).then_some(camera)
         })
         .map_or_else(Tilt::default, |camera| Tilt(Some(camera)))
 }
 
-/// The view `key` for `provider`, made on first use, its camera put where
-/// `frame` looks when the map was moved from outside. `None`, and a warning
-/// logged, when it cannot be made: the map shows no tiles, only its pins.
-fn view(layer: &Layer, window: &Window, cx: &mut App) -> Option<Entity<MapView>> {
+/// A new gpui-maps view for `layer`, looking where its frame does. `None`,
+/// and a warning logged, when it cannot be made.
+fn make(layer: &Layer, window: &Window, cx: &mut App) -> Option<Held> {
     let (provider, key, frame) = (layer.provider, layer.key.as_str(), layer.frame);
-    let fresh =
-        VIEWS.with_borrow(|views| views.get(key).is_none_or(|kept| kept.provider != provider));
-    if fresh {
-        let loaded = basemaps::load(basemap(provider))
-            .inspect_err(|error| tracing::warn!("ui.map: {}: {error}", provider.name()))
-            .ok()?;
-        let [lat, lon] = frame.middle();
-        let rt = runtime()?;
-        let map = cx.new(|_| {
-            let mut map = MapView::new(
-                lon,
-                lat,
-                frame.zoom - 1.0,
-                frame.size.0,
-                frame.size.1,
-                loaded.style,
-                loaded.source,
-                rt.clone(),
-            );
-            // Under the map's own pins, lines and buttons, not over them.
-            map.set_present_in_scene(true);
-            // The map draws its provider's credit itself.
-            map.set_credits_by_host(true);
-            map
-        });
-        if let Some(sprite) = loaded.sprite {
-            basemaps::spawn_sprites(map.downgrade(), sprite, None, rt, cx);
-        }
-        let (watched, handle) = (key.to_owned(), window.window_handle());
-        let watch = cx.observe(&map, move |map, cx| {
-            camera_moved(&watched, &map, handle, cx)
-        });
-        VIEWS.with_borrow_mut(|views| {
-            views.insert(key.to_owned(), Kept {
-                provider,
-                view: map,
-                seen: None,
-                seen_pitch: 0.0,
-                asked: None,
-                moved: None,
-                sender: layer.sender.clone(),
-                _watch: watch,
-            })
-        });
+    let loaded = basemaps::load(basemap(provider))
+        .inspect_err(|error| tracing::warn!("ui.map: {}: {error}", provider.name()))
+        .ok()?;
+    let [lat, lon] = frame.middle();
+    let rt = runtime()?;
+    let map = cx.new(|_| {
+        let mut map = MapView::new(
+            lon,
+            lat,
+            frame.zoom - 1.0,
+            frame.size.0,
+            frame.size.1,
+            loaded.style,
+            loaded.source,
+            rt.clone(),
+        );
+        // Under the map's own pins, lines and buttons, not over them.
+        map.set_present_in_scene(true);
+        // The map draws its provider's credit itself.
+        map.set_credits_by_host(true);
+        map
+    });
+    if let Some(sprite) = loaded.sprite {
+        basemaps::spawn_sprites(map.downgrade(), sprite, None, rt, cx);
     }
-    let (map, ask) = VIEWS.with_borrow_mut(|views| {
+    let (watched, handle) = (key.to_owned(), window.window_handle());
+    let watch = cx.observe(&map, move |map, cx| {
+        camera_moved(&watched, &map, handle, cx)
+    });
+    VIEWS.with_borrow_mut(|views| {
+        // What is known of views since dropped goes with them.
+        views.retain(|_, kept| kept.view.upgrade().is_some());
+        views.insert(key.to_owned(), Kept {
+            view: map.downgrade(),
+            seen: None,
+            seen_pitch: 0.0,
+            asked: None,
+            moved: None,
+            sender: layer.sender.clone(),
+        })
+    });
+    Some(Held {
+        provider,
+        view: map,
+        _watch: watch,
+    })
+}
+
+/// The view for `layer`, held in its element state `id`: made on first use
+/// or when the provider changes, its camera put where the frame looks when
+/// the map was moved from outside. `None` when it cannot be made: the map
+/// shows no tiles, only its pins.
+fn view(
+    layer: &Layer,
+    id: &GlobalElementId,
+    window: &mut Window,
+    cx: &mut App,
+) -> Option<Entity<MapView>> {
+    let (provider, key, frame) = (layer.provider, layer.key.as_str(), layer.frame);
+    let map = window.with_element_state(id, |held: Option<Option<Held>>, window| {
+        let held = match held.flatten() {
+            Some(held) if held.provider == provider => Some(held),
+            _ => make(layer, window, cx),
+        };
+        (held.as_ref().map(|held| held.view.clone()), held)
+    })?;
+    let ask = VIEWS.with_borrow_mut(|views| {
         let kept = views.get_mut(key)?;
         kept.moved = layer.moved.clone();
         kept.sender = layer.sender.clone();
@@ -228,8 +256,8 @@ fn view(layer: &Layer, window: &Window, cx: &mut App) -> Option<Entity<MapView>>
         if ask {
             kept.asked = Some(pose);
         }
-        Some((kept.view.clone(), ask.then_some(pose)))
-    })?;
+        ask.then_some(pose)
+    });
     if let Some((lat, lon, zoom, bearing)) = ask {
         map.update(cx, |map, cx| {
             map.jump_to(CameraTarget {
@@ -274,7 +302,7 @@ impl Element for Layer {
     type RequestLayoutState = ();
 
     fn id(&self) -> Option<ElementId> {
-        None
+        Some(ElementId::Name(self.key.clone().into()))
     }
 
     fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
@@ -283,15 +311,13 @@ impl Element for Layer {
 
     fn request_layout(
         &mut self,
-        _id: Option<&GlobalElementId>,
+        id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
-        let mut child = div()
-            .size_full()
-            .children(view(self, window, cx))
-            .into_any_element();
+        let map = id.and_then(|id| view(self, id, window, cx));
+        let mut child = div().size_full().children(map).into_any_element();
         let child_layout = child.request_layout(window, cx);
         self.child = Some(child);
         let mut style = Style::default();
@@ -313,7 +339,7 @@ impl Element for Layer {
         // gpui-maps' mark stands in the part on screen.
         let shown = bounds.intersect(&window.content_mask().bounds);
         let left = f32::from(shown.origin.x - bounds.origin.x).max(0.0);
-        let map = VIEWS.with_borrow(|views| views.get(&self.key).map(|kept| kept.view.clone()));
+        let map = VIEWS.with_borrow(|views| views.get(&self.key)?.view.upgrade());
         if let Some(map) = map {
             map.update(cx, |map, _| map.set_chrome_left_inset(left));
         }
