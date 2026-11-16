@@ -29,13 +29,13 @@ ui.map { pins = {} }
         refs = references('''
 ui.video { source = "scan" }
 local asked = { { to = "app:awake" }, { to = "app:dock" }, { to = "app:guard" }, { to = "app:restart" },
-  { to = "app:share" }, { to = "app:pdf" } }
+  { to = "app:share" }, { to = "app:status-item" }, { to = "app:hotkey" }, { to = "app:pdf" } }
 local notice = app.crash
 local shown = app.displays
 local spot = { display = "external" }
 ''', set())
-        self.assertEqual(refs.features, {"awake", "browser", "crash", "displays", "dock", "guard", "restart",
-                                         "share", "video"})
+        self.assertEqual(refs.features, {"awake", "browser", "crash", "displays", "dock", "guard", "hotkey",
+                                         "restart", "share", "status-item", "video"})
 
     def test_escaped_and_long_literal_imports(self):
         refs = references(r'''use "\x63ard"; use [=[badge]=]; use('\099ode')''', set())

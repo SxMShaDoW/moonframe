@@ -12,10 +12,12 @@ mod devtools;
 mod dock;
 mod edit;
 mod guard;
+mod hotkey;
 mod icon;
 mod pdf;
 mod pick;
 mod share;
+mod status_item;
 mod window;
 
 pub use {
@@ -24,10 +26,12 @@ pub use {
     dock::Dock,
     edit::{Edit, EditChange, Splice},
     guard::Guard,
+    hotkey::Hotkey,
     icon::{AppIcon, ICON_TYPES},
     pdf::{Paper, Pdf, PdfSource, private_host},
     pick::{Pick, PickKind},
     share::Share,
+    status_item::{StatusEntry, StatusIcon, StatusItem, StatusLook},
     window::WindowRequest,
 };
 
@@ -93,6 +97,11 @@ pub enum Request {
     /// `app:share`: the system's share menu for an address, text or
     /// files, at the pointer; what the user picked goes back to the mod.
     Share(Share),
+    /// `app:status-item`: the mod's item in the menu bar, with its menu.
+    StatusItem(StatusItem),
+    /// `app:hotkey`: a system-wide shortcut for the mod, or giving one
+    /// back; `app.hotkeys` says which are claimed.
+    Hotkey(Hotkey),
     /// `app:pdf`: a page rendered to a PDF file under the app's cache or
     /// state; the file's path (or why not) goes back to the mod.
     Pdf(Pdf),
@@ -178,6 +187,8 @@ impl Request {
             "icon" => icon::icon(msg).map(Self::Icon),
             "devtools" => devtools::devtools(msg).map(Self::Devtools),
             "share" => share::share(msg).map(Self::Share),
+            "status-item" => status_item::status_item(msg).map(Self::StatusItem),
+            "hotkey" => hotkey::hotkey(msg).map(Self::Hotkey),
             "pdf" => pdf::pdf(msg).map(Self::Pdf),
             _ => Err(Error::new(format!(
                 "no `{APP}{what}`; the app takes {}",
@@ -209,6 +220,8 @@ pub const NAMES: &[&str] = &[
     "icon",
     "devtools",
     "share",
+    "status-item",
+    "hotkey",
     "pdf",
 ];
 
