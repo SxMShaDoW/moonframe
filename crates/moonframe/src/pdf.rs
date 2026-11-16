@@ -5,10 +5,6 @@
 
 #[cfg(all(feature = "browser", target_os = "macos"))]
 mod macos;
-#[cfg(all(feature = "browser", target_os = "macos"))]
-mod network;
-#[cfg(all(feature = "browser", target_os = "macos"))]
-mod proxy;
 
 use {
     futures::channel::oneshot,

@@ -179,12 +179,6 @@ fn public_url(url: &str) -> Option<String> {
     public.then(|| parsed.into())
 }
 
-/// Whether `url` names this machine or a private network, or is not an
-/// address a PDF's page may load: see [`public_url`].
-pub fn private_host(url: &str) -> bool {
-    public_url(url).is_none()
-}
-
 /// Whether `ip` is on the public internet: not this machine, a private or
 /// shared network (`10/8`, `100.64/10`, `fc00::/7`), a link, multicast, or
 /// a range kept for documents, tests or the future. IPv6 addresses carrying
@@ -351,10 +345,19 @@ mod tests {
             let problem = pdf(&bad).unwrap_err().to_string();
             assert!(problem.contains(says), "{bad:?}: {problem}");
         }
-        assert!(!private_host("https://example.com:8443/a"));
-        assert!(!private_host("https://8.8.8.8/"));
-        assert!(!private_host("https://example.com./"));
-        assert!(!private_host("https://cdn.2024.example/"));
+        assert!(
+            public_url("https://example.com:8443/a").is_some(),
+            "https://example.com:8443/a"
+        );
+        assert!(public_url("https://8.8.8.8/").is_some(), "https://8.8.8.8/");
+        assert!(
+            public_url("https://example.com./").is_some(),
+            "https://example.com./"
+        );
+        assert!(
+            public_url("https://cdn.2024.example/").is_some(),
+            "https://cdn.2024.example/"
+        );
         assert_eq!(
             public_url("HTTPS://Example.COM:443/a b").as_deref(),
             None,
@@ -386,7 +389,7 @@ mod tests {
             "http:/\\127.0.0.1/",
             "ftp://example.com/",
         ] {
-            assert!(private_host(private), "{private}");
+            assert!(public_url(private).is_none(), "{private}");
         }
     }
 

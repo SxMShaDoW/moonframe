@@ -9,6 +9,11 @@
     reason = "WebKit and AppKit calls the bindings mark unsafe; each says why it is sound"
 )]
 
+// keep-sorted start
+mod network;
+mod proxy;
+// keep-sorted end
+
 use {
     super::{Job, Source},
     block2::RcBlock,
@@ -247,19 +252,19 @@ fn start(job: Pending, rules: &WKContentRuleList, main: MainThreadMarker) {
     let paper = paper_size(job.paper);
     let width = (paper.width - 2.0 * MARGIN).max(100.0);
     let online = matches!(job.source, Source::Url(_));
-    // SAFETY: a fresh configuration on the main thread, given its own
-    // store, script setting and rules before any view takes it.
     // SAFETY: a fresh session of its own, on the main thread.
     let store = unsafe { WKWebsiteDataStore::nonPersistentDataStore(main) };
     // A web page connects only through the proxy, which reaches the public
     // internet alone; the content rules below are only a first check.
     if online
         && let Err(problem) =
-            super::proxy::port().and_then(|port| super::network::through_proxy(&store, port))
+            proxy::proxy().and_then(|proxy| network::through_proxy(&store, &proxy))
     {
         let _ = job.answer.send(Err(problem));
         return;
     }
+    // SAFETY: a fresh configuration on the main thread, given its own
+    // store, script setting and rules before any view takes it.
     let configuration = unsafe {
         let configuration = WKWebViewConfiguration::new(main);
         configuration.setWebsiteDataStore(&store);
@@ -273,8 +278,9 @@ fn start(job: Pending, rules: &WKContentRuleList, main: MainThreadMarker) {
         configuration.preferences().setShouldPrintBackgrounds(true);
         configuration
     };
-    if online {
-        without_webrtc(&configuration, main);
+    if online && let Err(problem) = without_webrtc(&configuration, main) {
+        let _ = job.answer.send(Err(problem));
+        return;
     }
     let frame = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(width, 1000.0));
     // SAFETY: a fresh view with the configuration above.
@@ -337,10 +343,14 @@ fn start(job: Pending, rules: &WKContentRuleList, main: MainThreadMarker) {
 }
 
 /// Takes WebRTC from a web page: its connections are its own, not the
-/// session's, so they would pass the proxy by. WebKit's switch for it
-/// where the system has one, and the page's constructors removed in every
-/// frame before its script runs either way.
-fn without_webrtc(configuration: &WKWebViewConfiguration, main: MainThreadMarker) {
+/// session's, so they would pass the proxy by. WebKit's switch, which
+/// takes it from every frame, the page's own included, is required; the
+/// page's constructors are also removed in every frame before its script
+/// runs, should a frame escape it.
+fn without_webrtc(
+    configuration: &WKWebViewConfiguration,
+    main: MainThreadMarker,
+) -> Result<(), String> {
     const SCRIPT: &str = "for (const name of ['RTCPeerConnection', 'webkitRTCPeerConnection', \
                           'RTCDataChannel', 'RTCRtpSender', 'RTCRtpReceiver', \
                           'RTCRtpTransceiver', 'RTCIceCandidate', 'RTCIceTransport', \
@@ -351,9 +361,10 @@ fn without_webrtc(configuration: &WKWebViewConfiguration, main: MainThreadMarker
         let preferences = configuration.preferences();
         let switchable: bool =
             msg_send![&*preferences, respondsToSelector: sel!(_setPeerConnectionEnabled:)];
-        if switchable {
-            let () = msg_send![&*preferences, _setPeerConnectionEnabled: false];
+        if !switchable {
+            return Err("this system's WebKit cannot turn WebRTC off for a web page".to_owned());
         }
+        let () = msg_send![&*preferences, _setPeerConnectionEnabled: false];
         let script = WKUserScript::initWithSource_injectionTime_forMainFrameOnly(
             WKUserScript::alloc(main),
             &NSString::from_str(SCRIPT),
@@ -362,6 +373,7 @@ fn without_webrtc(configuration: &WKWebViewConfiguration, main: MainThreadMarker
         );
         configuration.userContentController().addUserScript(&script);
     }
+    Ok(())
 }
 
 /// What the delegate prints, and to whom it answers.
