@@ -61,6 +61,7 @@ mod inspect;
 mod keys;
 mod launch;
 mod live;
+mod mockup;
 mod mod_window;
 mod motion;
 mod natives;
