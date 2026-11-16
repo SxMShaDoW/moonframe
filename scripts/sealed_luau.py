@@ -136,7 +136,7 @@ class Lexer:
 APP_DATA = {"crash": "crash", "displays": "displays"}
 APP_REQUESTS = {"app:awake": "awake", "app:dock": "dock", "app:guard": "guard",
                 "app:hotkey": "hotkey", "app:pdf": "browser", "app:restart": "restart",
-                "app:status-item": "status-item"}
+                "app:share": "share", "app:status-item": "status-item"}
 
 
 @dataclass

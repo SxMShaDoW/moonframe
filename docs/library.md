@@ -51,8 +51,8 @@ Features: `acp`, `alacritty`, `browser`, `chat`, `docs`, `forge`, `git`,
 source with Zig; see `mise.toml`) is opt-in: `features = ["ghostty"]`, and
 so are `map` (`ui.map` street maps), `speech` (dictation), `video` (`ui.video`) and what long runs
 and live machines ask for (`awake`, `crash`, `displays`, `dock`, `guard`,
-`hotkey`, `restart`, `socket`, `status-item`), which few apps need. The
-starter has them all.
+`hotkey`, `restart`, `share`, `socket`, `status-item`), which few apps
+need. The starter has them all.
 
 **Keep every default.** They are what lets the people using the app change
 it: Developer Mode (`studio`: Inspect Element, the Developer tools), Make
@@ -104,6 +104,7 @@ ship only their selected components.
 | `hotkey` | `app:hotkey` and `app.hotkeys`: system-wide shortcuts for mods (macOS, with Carbon's hot keys: no permission to ask for). Off by default. |
 | `status-item` | `app:status-item`: a mod's item in the menu bar, with its menu (macOS). Off by default. |
 | `restart` | `app:restart`, and `restart = "on-failure"` for process providers. Off by default; without it a process that goes stays gone. |
+| `share` | `app:share`: the system's share menu for a web address, text or the app's files (macOS). Off by default. |
 | `socket` | Socket providers (`kind = "socket"`), on Unix. Off by default; without it one fails as it starts. |
 | `browser` | Native web views and Wry on macOS/Windows, and `app:pdf` (pages made into PDF files, macOS). Linux keeps its system-browser fallback. |
 | `terminal` | Terminal rendering, local PTYs and tmux; choose an engine below to run a shell. |

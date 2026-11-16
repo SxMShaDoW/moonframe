@@ -16,6 +16,7 @@ mod hotkey;
 mod icon;
 mod pdf;
 mod pick;
+mod share;
 mod status_item;
 mod window;
 
@@ -29,6 +30,7 @@ pub use {
     icon::{AppIcon, ICON_TYPES},
     pdf::{Paper, Pdf, PdfSource, private_host, public_address},
     pick::{Pick, PickKind},
+    share::Share,
     status_item::{StatusEntry, StatusIcon, StatusItem, StatusLook},
     window::WindowRequest,
 };
@@ -92,6 +94,9 @@ pub enum Request {
     /// `app:open`: opens a web address (`https://` or `http://`) in the
     /// system's browser: a pull request, a sign-in page.
     Open(String),
+    /// `app:share`: the system's share menu for an address, text or
+    /// files, at the pointer; what the user picked goes back to the mod.
+    Share(Share),
     /// `app:status-item`: the mod's item in the menu bar, with its menu.
     StatusItem(StatusItem),
     /// `app:hotkey`: a system-wide shortcut for the mod, or giving one
@@ -181,6 +186,7 @@ impl Request {
             "open" => open(msg).map(Self::Open),
             "icon" => icon::icon(msg).map(Self::Icon),
             "devtools" => devtools::devtools(msg).map(Self::Devtools),
+            "share" => share::share(msg).map(Self::Share),
             "status-item" => status_item::status_item(msg).map(Self::StatusItem),
             "hotkey" => hotkey::hotkey(msg).map(Self::Hotkey),
             "pdf" => pdf::pdf(msg).map(Self::Pdf),
@@ -213,6 +219,7 @@ pub const NAMES: &[&str] = &[
     "open",
     "icon",
     "devtools",
+    "share",
     "status-item",
     "hotkey",
     "pdf",

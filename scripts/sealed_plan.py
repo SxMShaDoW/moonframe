@@ -27,6 +27,7 @@ FEATURES = set(NATIVES.values()) | {
     "math",
     "prose",
     "restart",
+    "share",
     "socket",
     "status-item",
     "syntax",
