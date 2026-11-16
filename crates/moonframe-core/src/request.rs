@@ -14,6 +14,7 @@ mod edit;
 mod guard;
 mod hotkey;
 mod icon;
+mod pdf;
 mod pick;
 mod status_item;
 mod window;
@@ -26,6 +27,7 @@ pub use {
     guard::Guard,
     hotkey::Hotkey,
     icon::{AppIcon, ICON_TYPES},
+    pdf::{Paper, Pdf, PdfSource, private_host},
     pick::{Pick, PickKind},
     status_item::{StatusEntry, StatusIcon, StatusItem, StatusLook},
     window::WindowRequest,
@@ -57,6 +59,10 @@ pub enum Request {
     /// none); a click on it brings the window forward and tells the mod
     /// that posted it, on `app/notification`, with its `id`.
     Notify(Notification),
+    /// `app:notify` with `{ ask = true }`: asks the user to allow
+    /// notifications now, posting none; `app.notifications` says the
+    /// answer.
+    AskToNotify,
     /// `app:pick`: the system's panel to open files, pick folders or
     /// name a file to save; the answer comes back to the mod that asked.
     Pick(Pick),
@@ -91,6 +97,9 @@ pub enum Request {
     /// `app:hotkey`: a system-wide shortcut for the mod, or giving one
     /// back; `app.hotkeys` says which are claimed.
     Hotkey(Hotkey),
+    /// `app:pdf`: a page rendered to a PDF file under the app's cache or
+    /// state; the file's path (or why not) goes back to the mod.
+    Pdf(Pdf),
 }
 
 /// What `app:sound` plays.
@@ -110,6 +119,9 @@ pub struct Notification {
     pub body: String,
     /// What the mod hears back when it is clicked.
     pub id: Option<String>,
+    /// Whether it takes the place of those the mod posted before with the
+    /// same `id`, rather than adding to them.
+    pub replace: bool,
 }
 
 /// Longest a notification's title, its body and its id can be, in bytes.
@@ -158,7 +170,7 @@ impl Request {
             },
             "theme" => theme(msg),
             "sound" => sound(msg).map(Self::Sound),
-            "notify" => notification(msg).map(Self::Notify),
+            "notify" => notify(msg),
             "pick" => pick::pick(msg).map(Self::Pick),
             "edit" => edit::edit(msg).map(Self::Edit),
             "window" => window::window(msg).map(Self::Window),
@@ -171,6 +183,7 @@ impl Request {
             "devtools" => devtools::devtools(msg).map(Self::Devtools),
             "status-item" => status_item::status_item(msg).map(Self::StatusItem),
             "hotkey" => hotkey::hotkey(msg).map(Self::Hotkey),
+            "pdf" => pdf::pdf(msg).map(Self::Pdf),
             _ => Err(Error::new(format!(
                 "no `{APP}{what}`; the app takes {}",
                 NAMES
@@ -202,6 +215,7 @@ pub const NAMES: &[&str] = &[
     "devtools",
     "status-item",
     "hotkey",
+    "pdf",
 ];
 
 /// Longest address `app:open` opens.
@@ -255,20 +269,28 @@ fn sound(msg: &Data) -> Result<Sound, Error> {
     Ok(Sound::File(name.clone()))
 }
 
-/// `{ title = "...", body = "...", id = "..." }`, `body` and `id` optional.
-fn notification(msg: &Data) -> Result<Notification, Error> {
+/// `{ title = "...", body = "...", id = "...", replace = true }`, all but
+/// `title` optional; or `{ ask = true }`.
+fn notify(msg: &Data) -> Result<Request, Error> {
     let fail = |problem: &str| Error::new(format!("`{APP}notify`: {problem}"));
     let Data::Map(fields) = msg else {
         return Err(fail(
-            "takes { title = \"...\", body = \"...\", id = \"...\" }",
+            "takes { title = \"...\", body = \"...\", id = \"...\" } or { ask = true }",
         ));
     };
+    if let Some(ask) = fields.get("ask") {
+        return match ask {
+            Data::Bool(true) if fields.len() == 1 => Ok(Request::AskToNotify),
+            Data::Bool(true) => Err(fail("`ask` posts nothing, so it takes no other key")),
+            _ => Err(fail("`ask` is `true`")),
+        };
+    }
     if let Some(key) = fields
         .keys()
-        .find(|key| !matches!(key.as_str(), "title" | "body" | "id"))
+        .find(|key| !matches!(key.as_str(), "title" | "body" | "id" | "replace"))
     {
         return Err(fail(&format!(
-            "unknown key `{key}`; it takes title, body and id"
+            "unknown key `{key}`; it takes title, body, id and replace, or ask"
         )));
     }
     let text = |key: &str, max: usize| match fields.get(key) {
@@ -290,11 +312,18 @@ fn notification(msg: &Data) -> Result<Notification, Error> {
             "`id` is 1 to {MAX_ID} of a-z, A-Z, 0-9, - _ . : /"
         )));
     }
-    Ok(Notification {
+    let replace = match fields.get("replace") {
+        None | Some(Data::Bool(false)) => false,
+        Some(Data::Bool(true)) if id.is_some() => true,
+        Some(Data::Bool(true)) => return Err(fail("`replace` needs the `id` it replaces")),
+        Some(_) => return Err(fail("`replace` is a boolean")),
+    };
+    Ok(Request::Notify(Notification {
         title: title.ok_or_else(|| fail("needs a `title`"))?,
         body: text("body", MAX_BODY)?.unwrap_or_default(),
         id,
-    })
+        replace,
+    }))
 }
 
 /// `{ light = "<theme>", dark = "<theme>" }`, either or both.

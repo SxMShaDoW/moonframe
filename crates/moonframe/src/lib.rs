@@ -66,6 +66,7 @@ mod motion;
 mod natives;
 mod overlay;
 mod panes;
+mod pdf;
 #[cfg(any(feature = "terminal", feature = "herdr-core"))]
 mod persist;
 #[cfg(not(any(feature = "terminal", feature = "herdr-core")))]

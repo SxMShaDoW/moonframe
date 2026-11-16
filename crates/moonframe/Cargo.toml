@@ -180,9 +180,9 @@ anstream.workspace = true
 anstyle.workspace  = true
 # Enable export on the same GPUI version as gpui-kit, without its test harness.
 futures.workspace             = true
-gpui-capture                  = { default-features = false, features = ["test-support"], optional = true, package = "gpui-pre", version = "=0.3.10" }
+gpui-capture                  = { default-features = false, features = ["test-support"], optional = true, package = "gpui-pre", version = "=0.3.12" }
 gpui-kit.workspace            = true
-gpui-platform-capture         = { default-features = false, features = ["test-support"], optional = true, package = "gpui-pre-platform", version = "=0.3.10" }
+gpui-platform-capture         = { default-features = false, features = ["test-support"], optional = true, package = "gpui-pre-platform", version = "=0.3.12" }
 image                         = { optional = true, workspace = true }
 imagesize.workspace           = true
 keepawake                     = { optional = true, workspace = true }
@@ -223,26 +223,26 @@ ureq                          = { optional = true, workspace = true }
 # Real windows, headless: `src/e2e.rs` clicks and types in them. As for
 # `capture`, on GPUI itself: gpui-kit's `test-support` can't resolve with the
 # locked taffy.
-gpui-capture          = { default-features = false, features = ["test-support"], package = "gpui-pre", version = "=0.3.10" }
-gpui-platform-capture = { default-features = false, features = ["test-support"], package = "gpui-pre-platform", version = "=0.3.10" }
+gpui-capture          = { default-features = false, features = ["test-support"], package = "gpui-pre", version = "=0.3.12" }
+gpui-platform-capture = { default-features = false, features = ["test-support"], package = "gpui-pre-platform", version = "=0.3.12" }
 tempfile.workspace    = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-graphics-types = { optional = true, workspace = true }
 # `render_entry`'s text, shaped off the main thread, unlike the platform's.
-gpui-apple-capture = { features = ["font-kit"], optional = true, package = "gpui-pre-apple", version = "=0.3.10" }
+gpui-apple-capture = { features = ["font-kit"], optional = true, package = "gpui-pre-apple", version = "=0.3.12" }
 metal              = { optional = true, workspace = true }
 moonframe-frames   = { optional = true, workspace = true }
 # `ui.browser`'s keys and clipping: a key monitor and the view a page sits in.
 block2.workspace           = true
 objc2.workspace            = true
-objc2-app-kit              = { features = ["NSBezierPath", "NSButton", "NSButtonCell", "NSCell", "NSColor", "NSControl", "NSDockTile", "NSEvent", "NSImageView", "NSMenu", "NSMenuItem", "NSRunningApplication", "NSSound", "NSStatusBar", "NSStatusBarButton", "NSStatusItem", "NSView", "NSWindow", "block2"], workspace = true }
+objc2-app-kit              = { features = ["NSBezierPath", "NSButton", "NSButtonCell", "NSCell", "NSColor", "NSControl", "NSDockTile", "NSEvent", "NSImageView", "NSMenu", "NSMenuItem", "NSPrintInfo", "NSPrintOperation", "NSRunningApplication", "NSSound", "NSStatusBar", "NSStatusBarButton", "NSStatusItem", "NSView", "NSWindow", "block2"], workspace = true }
 objc2-foundation.workspace = true
 # Finding the AppKit window a trackpad gesture happened in.
 raw-window-handle.workspace = true
 # `app:notify`: system notifications, and hearing their clicks.
 objc2-user-notifications.workspace = true
-objc2-web-kit                      = { optional = true, workspace = true }
+objc2-web-kit                      = { features = ["WKContentRuleList", "WKContentRuleListStore", "WKNavigation", "WKNavigationDelegate", "WKPreferences", "WKUserContentController", "WKWebViewConfiguration", "WKWebpagePreferences", "WKWebsiteDataStore", "block2"], optional = true, workspace = true }
 
 # wry has no working GPUI child-view backend on Linux yet; a `ui.browser`
 # there shows its address and opens it in the system browser.

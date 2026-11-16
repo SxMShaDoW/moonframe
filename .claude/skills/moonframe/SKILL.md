@@ -806,16 +806,28 @@ end
   absolute, and inside the app's folders. Never a URL. Sounds closer than
   150 ms apart are dropped. macOS plays them (`NSSound`); Linux with
   `paplay` or `aplay` when installed; Windows plays none yet (logged).
-- `app:notify`, `msg` `{ title, body?, id? }`: a system notification. macOS
+- `app:notify`, `msg` `{ title, body?, id?, replace? }`: a system notification. macOS
   posts it through the Notification Center when the app runs as a bundle
   (an installed app, `just bundle`, `just bundle-app`), asking the user to
   allow notifications the first time; it shows even when the window is in
   front, so check `app.window.active` to alert only when the user is not
   looking. A run from source (`just run`, a bare binary), Linux and Windows
-  show it as a toast in the window instead, for 5 s. Clicking either brings
+  show it as a toast in the window instead, for 5 s, as does macOS once the
+  user turns notifications off for the app. Clicking either brings
   the app and its window forward and tells the mod that posted it, if it subscribes to
   `app/notification`: `{ topic = "app/notification", value = { id, clicked
-  = true } }`. At most 5 notifications in 10 s are posted.
+  = true } }`; a click that starts the app waits for its window. Put what
+  to open in `id` (a page, a thread). `replace = true` (with an `id`) takes
+  the place of the mod's earlier ones with that `id`, from this run or an
+  earlier one, rather than stacking: "Uploading…" then "Uploaded".
+  At most 5 notifications in 10 s are posted.
+- `app:notify`, `msg` `{ ask = true }`: asks the user to allow notifications
+  now, posting none, as a button that turns them on would; the system asks
+  only once, and at most 2 asks in 10 s are made. `app.notifications` says
+  how it stands: `"allowed"`, `"denied"` (turned off in System Settings:
+  toasts show them), `"undecided"` (not asked yet), or `"in-window"` (no
+  system notifications here: toasts show them); nil until the system says,
+  and read again each time a window comes forward.
 
 ```lua
 return mod {
@@ -992,6 +1004,31 @@ return state, { { to = "app:window", msg = { open = "settings", send = { page = 
   Other schemes (`file`, an app's own) are the sender's error. At most 3
   pages open in 10 s. A control does it on a click: `ui.row { to =
   "app:open", msg = pr.url, ... }`.
+- `app:pdf`, `msg` `{ html | html_file | url, pdf, paper?, reply? }`: a page
+  made into a PDF file, as a reader saves an article (macOS, with the
+  `browser` feature). The page is `html` (text, up to 1 MiB), `html_file`
+  (an `.html` file under the app's cache or state folders, for bigger
+  pages a provider wrote) or `url` (an `https://` page on the internet).
+  HTML and `html_file` show with no script and nothing from the network:
+  inline pictures as `data:`. A `url` page runs its script, in a session of
+  its own (none of the app's cookies), and never reaches this machine or
+  its network by address. It loads in an offscreen view and prints to
+  paper pages (`paper = "a4"` or `"letter"`, else the system's; half-inch
+  margins; backgrounds print; CSS `@page` and `break-before: page` work).
+  `pdf` is where: a path relative to the app's cache folder
+  (`~/.cache/<app>`), or one under its cache or state folders; anywhere
+  else is the sender's error. With `reply`, the mod hears it back with
+  `path` (the file written) or `error` (it did not load, took over 30 s,
+  ...). At most 3 at once. Share the file on with `app:share`, or have a
+  provider move it.
+
+```lua
+-- the article the mod shows, saved as a PDF
+ui.button { "Save as PDF", icon = "download", to = "app:pdf",
+	msg = { html = article_html, pdf = "articles/" .. id .. ".pdf", reply = { saved = id } } }
+-- in update: if msg.saved then state.files[msg.saved] = msg.path or false end
+```
+
 - A request the app cannot read (an unknown command, a misspelled
   `app:<what>`) is the sender's error, shown as an `update` error.
 - Previews (the Components window) ask nothing, and a provider's answer

@@ -34,6 +34,8 @@ use {
 
 /// How far another window opens from the front one.
 const CASCADE: Pixels = px(28.);
+/// How often a notification click waiting for a main window looks for one.
+const CLICK_WAIT: Duration = Duration::from_millis(100);
 
 /// What opening another main window takes, from the first.
 #[derive(Clone)]
@@ -579,15 +581,37 @@ fn menu_actions(cx: &mut App) {
 
 /// Hears the clicks on the notifications mods posted: each brings the
 /// app and its front window forward and tells the mod there that posted
-/// it, on `app/notification`: `{ id, clicked = true }`.
+/// it, on `app/notification`: `{ id, clicked = true }`. One that comes
+/// before a main window is open (the click started the app) waits for it.
+/// Also shares whether the user lets the app post them, as
+/// `app.notifications`.
 fn hear_notification_clicks(cx: &mut App) {
     let (sender, mut clicks) = futures::channel::mpsc::unbounded::<(String, Option<String>)>();
-    crate::alerts::listen(move |from, id| {
-        let _ = sender.unbounded_send((from, id));
-    });
+    let (told, mut permissions) = futures::channel::mpsc::unbounded();
+    crate::alerts::listen(
+        move |from, id| {
+            let _ = sender.unbounded_send((from, id));
+        },
+        move |permission| {
+            let _ = told.unbounded_send(permission);
+        },
+    );
     cx.spawn(async move |cx| {
         while let Some((from, id)) = clicks.next().await {
+            while cx.update(|cx| front(cx).is_none()) {
+                cx.background_executor().timer(CLICK_WAIT).await;
+            }
             cx.update(|cx| on_front(cx, |app, cx| app.notification_clicked(&from, id, cx)));
+        }
+    })
+    .detach();
+    cx.spawn(async move |cx| {
+        let mut shared = None;
+        while let Some(permission) = permissions.next().await {
+            if shared.replace(permission) != Some(permission) {
+                let name = crate::alerts::Permission::name(permission);
+                cx.update(|cx| share_everywhere("notifications", Data::from(name), cx));
+            }
         }
     })
     .detach();
