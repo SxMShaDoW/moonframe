@@ -4,6 +4,7 @@
 # `focus-native` folder. See src/lib.rs.
 [package]
 edition = "2024"
+license = "MIT"
 name    = "focus"
 publish = false
 version = "0.1.0"
