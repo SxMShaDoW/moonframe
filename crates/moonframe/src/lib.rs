@@ -112,7 +112,7 @@ pub use {
         schema,
     },
     moonframe_providers::{
-        Caller, Capabilities, Handle, HostCallLimits, HostCapability, Native, check_entry,
+        Caller, Capabilities, Handle, HostCallLimits, HostCapability, Native, Portable, check_entry,
     },
     rust_embed,
 };

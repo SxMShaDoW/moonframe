@@ -366,6 +366,54 @@ let a changed setting win over the saved state.</p>
 <li><strong>A running provider panics.</strong> It has nothing left to save, so the next
   build starts fresh. Only state from a clean stop is handed on.</li>
 </ul>
+<h2 id="compile-it-into-the-app">Compile it into the app</h2>
+<p>A provider written against the guest SDK builds either way from the same
+source: as a component, sandboxed and rebuilt as you edit, or linked into the
+app as an ordinary crate, with no wasmtime, Cargo or sandbox at run time.</p>
+<pre><code class="language-rust">// providers/counter/src/lib.rs
+use {moonframe_provider::Provider, serde_json::Value};
+
+pub struct Counter(u64);
+
+impl Provider for Counter {
+    fn start(_settings: Value) -&gt; Result&lt;Self, String&gt; {
+        Ok(Self(0))
+    }
+
+    fn tick(&amp;mut self) -&gt; Option&lt;Value&gt; {
+        self.0 += 1;
+        Some(self.0.into())
+    }
+
+    fn receive(&amp;mut self, message: Value) -&gt; Option&lt;Value&gt; {
+        (message == &quot;reset&quot;).then(|| { self.0 = 0; self.0.into() })
+    }
+}
+
+moonframe_provider::export!(Counter); // the component's exports; nothing natively
+</code></pre>
+<p>Give the crate <code>crate-type = ["cdylib", "rlib"]</code> so the app can depend on it,
+then register it under the folder's name and switch the folder's kind:</p>
+<pre><code class="language-rust">Moonframe::new(...).native(&quot;counter&quot;, moonframe::Portable::&lt;counter::Counter&gt;::new)
+</code></pre>
+<pre><code class="language-toml"># providers/counter/provider.toml
+kind = &quot;native&quot;     # was &quot;wasm&quot;; the rest stays as it was
+</code></pre>
+<p>Compiled in, it is called in the same order (<code>start</code>, <code>restore</code>, a first
+<code>tick</code> published at once, then ticks and messages) and <code>log</code>, <code>system_load</code>
+and <code>host_call</code> reach the app with the same <code>capabilities</code> from provider.toml
+(<code>system</code> needs the app's <code>system</code> or <code>wasm</code> feature). What differs: it has
+the user's access and no fuel or memory limits, so link only code you would
+run yourself; <code>save</code> hands state to the next start only within one launch;
+and a change needs the app rebuilt.</p>
+<p><code>examples/portable</code> is a complete example to copy: a focus timer crate in
+<code>app/providers/focus</code> (settings, ticks, messages, <code>save</code>/<code>restore</code>, and unit
+tests that run natively), run as a component from that folder and compiled in
+for <code>app/providers/focus-native</code>, side by side in one window. Its <code>host/</code>
+binary sits beside the app folder, not around it: Cargo counts any crate
+inside a workspace member's folder as a member, so a provider crate there
+could not keep its own <code>[workspace]</code>. <code>examples/capability-provider</code> builds
+both ways too.</p>
 <h2 id="host-defined-capabilities-and-external-miniapps">Host-defined capabilities and external miniapps</h2>
 <p>An embedding app can expose a narrow JSON API to Wasm:</p>
 <pre><code class="language-rust">use moonframe::{Caller, HostCapability, Moonframe, RootPolicy};
@@ -489,10 +537,12 @@ be namespaced with dots; unprefixed names and <code>moonframe.*</code> are reser
 <code>Caller</code> includes the registered provider name, provider folder, root path,
 optional namespace, and all declared capability names.</p>
 <p>The standalone Rust guest SDK is <code>crates/moonframe-provider</code> (add it as a path
-or git dependency). Implement <code>moonframe_provider::bindings::Guest</code> and export
-with <code>moonframe_provider::bindings::export!(MyProvider with_types_in
-moonframe_provider::bindings)</code>. Enable its <code>stateful</code> feature for save/restore.
-Its typed helper serializes arguments and deserializes the JSON answer:</p>
+or git dependency). Implement <code>moonframe_provider::Provider</code> and export it with
+<code>moonframe_provider::export!(MyProvider)</code>; the same crate can then be compiled
+into the app too (see <a href="#compile-it-into-the-app">Compile it into the app</a>).
+Enable its <code>stateful</code> feature for save/restore. The raw WIT bindings stay
+available on wasm32 as <code>moonframe_provider::bindings</code>. Its typed helper
+serializes arguments and deserializes the JSON answer:</p>
 <pre><code class="language-rust">let answer: serde_json::Value = moonframe_provider::host_call(
     &quot;mshub.entities&quot;, &quot;echo&quot;, &amp;serde_json::json!({ &quot;id&quot;: 42 }),
 )?;
@@ -723,7 +773,7 @@ compiled components in a source package.</p>
 uses the host capability; <a href="https://github.com/moonframehq/moonframe/tree/main/examples/gantry/providers/telemetry">Gantry telemetry</a>
 keeps a larger in-memory model and handles messages (its data is simulated).</p>
 </main>
-<nav class="toc" aria-label="On this page"><b>On this page</b><a href="#choose-a-provider-kind">Choose a provider kind</a><a href="#set-up-the-folder">Set up the folder</a><a href="#declare-the-provider">Declare the provider</a><a href="#implement-the-component">Implement the component</a><a href="#keep-state-across-a-new-build">Keep state across a new build</a><a href="#host-defined-capabilities-and-external-miniapps">Host-defined capabilities and external miniapps</a><a href="#draw-it-and-send-messages">Draw it and send messages</a><a href="#build-run-and-check">Build, run and check</a><a href="#host-calls-and-limits">Host calls and limits</a><a href="#package-and-share">Package and share</a><a href="#troubleshooting">Troubleshooting</a><a href="#coding-agent-recipe">Coding-agent recipe</a>
+<nav class="toc" aria-label="On this page"><b>On this page</b><a href="#choose-a-provider-kind">Choose a provider kind</a><a href="#set-up-the-folder">Set up the folder</a><a href="#declare-the-provider">Declare the provider</a><a href="#implement-the-component">Implement the component</a><a href="#keep-state-across-a-new-build">Keep state across a new build</a><a href="#compile-it-into-the-app">Compile it into the app</a><a href="#host-defined-capabilities-and-external-miniapps">Host-defined capabilities and external miniapps</a><a href="#draw-it-and-send-messages">Draw it and send messages</a><a href="#build-run-and-check">Build, run and check</a><a href="#host-calls-and-limits">Host calls and limits</a><a href="#package-and-share">Package and share</a><a href="#troubleshooting">Troubleshooting</a><a href="#coding-agent-recipe">Coding-agent recipe</a>
 <div class="edit"><a href="https://github.com/moonframehq/moonframe/edit/main/docs/wasm-providers.md">Edit this guide ↗</a></div>
 </nav>
 </div>

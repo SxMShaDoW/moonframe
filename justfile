@@ -27,8 +27,8 @@ check-builtin dir="app":
 # Load the example apps in examples/ headlessly, each as a profile in a
 # throwaway user folder, and type-check their Luau.
 check-examples:
-    cargo build --quiet --release -p moonframe-app -p moonframe-host-example
-    scripts/check-examples.sh target/release/moonframe target/release/host-example
+    cargo build --quiet --release -p moonframe-app -p moonframe-host-example -p moonframe-portable-example
+    scripts/check-examples.sh target/release/moonframe target/release/host-example target/release/portable-example
     just types examples
 
 # Open the demo gallery (examples/demo): every example app as a picture; a
@@ -186,6 +186,13 @@ providers-examples:
     cargo clippy --quiet --release --target wasm32-wasip2 --manifest-path examples/capability-provider/Cargo.toml --target-dir target/providers -- -D warnings
     cargo build --quiet --release --target wasm32-wasip2 --manifest-path examples/capability-provider/Cargo.toml --target-dir target/providers
     cargo check --quiet --target wasm32-wasip2 --manifest-path crates/moonframe-provider/Cargo.toml --features stateful --target-dir target/providers
+    # examples/portable's provider, as the wasm build its `focus` folder runs.
+    just providers examples/portable/app
+    # The same SDK crates compiled in, as `Portable` links them.
+    cargo clippy --quiet --manifest-path examples/capability-provider/Cargo.toml --target-dir target/providers -- -D warnings
+    cargo clippy --quiet --all-targets --manifest-path examples/portable/app/providers/focus/Cargo.toml --target-dir target/providers -- -D warnings
+    cargo test --quiet --manifest-path examples/portable/app/providers/focus/Cargo.toml --target-dir target/providers
+    cargo test --quiet --manifest-path crates/moonframe-provider/Cargo.toml --target-dir target/providers
 
 # Download the pinned luau-lsp that `just types` uses (into target/tools).
 setup-luau:
