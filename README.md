@@ -334,10 +334,11 @@ can't reach, and read them as you would any script.
 
 A Rust provider written with the `moonframe-provider` SDK builds either way
 from the same source: as a WASM component, or compiled into an app on the
-library with `moonframe::Portable`, trading the sandbox for faster starts.
+library with `moonframe::Portable`, trading the sandbox for speed.
 [`examples/portable`](examples/portable) runs one both ways side by side. On
-an Apple M4 Max, the compiled-in build starts in 0.2 ms against 15.6 ms for
-the prebuilt component, and answers a message in 7.0 µs against 8.6 µs
+an Apple M4 Max, a provider digesting 50,000 request-log lines a cycle takes
+8.9 ms compiled in against 21.6 ms as a component (15.2 ms built for speed),
+and starts in 0.2 ms against 15.6 ms
 ([how the two builds compare](docs/wasm-providers.md#how-the-two-builds-compare)).
 
 The sandbox only covers the running component. Building it runs Cargo as

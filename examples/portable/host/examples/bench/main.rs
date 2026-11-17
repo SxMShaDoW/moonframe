@@ -14,9 +14,14 @@
 //!   where Cargo finds nothing to do), wasm prebuilt (a `provider.wasm`
 //!   alone, as bundled apps ship it), and native;
 //! - **round trip**: a mod's message sent, the provider's answer published,
-//!   one after another, as median, p95 and p99, and messages per second.
+//!   one after another, as median, p95 and p99, and messages per second;
+//! - **a real workload** (see `workload.rs`): `bench/providers/digest`
+//!   fetching request logs through a host capability, digesting them per
+//!   route and publishing the summary, at a few batch sizes.
 //!
 //! The wasm build needs `rustup target add wasm32-wasip2`.
+
+mod workload;
 
 use {
     moonframe::moonframe_core::{Data, Roots},
@@ -87,7 +92,8 @@ fn main() -> Result<(), String> {
         let trips = round_trips(root, &build, name, natives)?;
         println!("  {label:<7} {trips}");
     }
-    Ok(())
+    println!();
+    workload::run(&build)
 }
 
 /// The native build, as the example's host registers it.
@@ -105,6 +111,16 @@ struct Running {
 
 impl Running {
     fn start(root: &Path, build: &Path, name: &str, natives: Natives) -> Self {
+        Self::start_with(root, build, name, natives, ProviderOptions::default())
+    }
+
+    fn start_with(
+        root: &Path,
+        build: &Path,
+        name: &str,
+        natives: Natives,
+        options: ProviderOptions,
+    ) -> Self {
         let (send, events) = mpsc::channel();
         let send = Mutex::new(send);
         let report: Events = Arc::new(move |event| {
@@ -118,7 +134,7 @@ impl Running {
             report,
             natives,
             Some(BTreeSet::from([name.to_owned()])),
-            ProviderOptions::default(),
+            options,
         );
         Self {
             providers,
@@ -128,12 +144,14 @@ impl Running {
     }
 
     /// Waits for the provider's next data; its failure is the bench's.
-    fn published(&self) -> Result<(), String> {
+    fn published(&self) -> Result<Data, String> {
         let until = Instant::now() + PATIENCE;
         loop {
             let left = until.saturating_duration_since(Instant::now());
             match self.events.recv_timeout(left) {
-                Ok(Event::Published { provider, .. }) if provider == self.name => return Ok(()),
+                Ok(Event::Published { provider, data }) if provider == self.name => {
+                    return Ok(data);
+                },
                 Ok(Event::Failed { provider, problem }) if provider == self.name => {
                     return Err(format!("{provider}: {problem}"));
                 },
@@ -143,9 +161,9 @@ impl Running {
         }
     }
 
-    fn send(&mut self, message: &str) -> Result<(), String> {
+    fn send(&mut self, message: Data) -> Result<(), String> {
         self.providers
-            .send(&self.name, "bench", Data::from(message))
+            .send(&self.name, "bench", message)
             .map_err(|e| e.to_string())
     }
 }
@@ -171,7 +189,7 @@ fn round_trips(root: &Path, build: &Path, name: &str, natives: Natives) -> Resul
     let mut times = Vec::with_capacity(TRIPS);
     for trip in 0..WARMUP + TRIPS {
         let sent = Instant::now();
-        running.send("status")?;
+        running.send(Data::from("status"))?;
         running.published()?;
         if trip >= WARMUP {
             times.push(sent.elapsed());

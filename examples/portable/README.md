@@ -17,6 +17,9 @@ app/
       provider.toml             kind = "native": the same crate, linked in
 host/
   src/main.rs                   .native("focus-native", Portable::<focus::Focus>::new)
+  examples/bench/               both builds measured (see "How fast each is")
+bench/
+  providers/digest/             a provider doing real work, for the bench
 ```
 
 The timer's code is the same in both: `start` reads `[settings]`, `tick`
@@ -43,10 +46,14 @@ runtime and prints what it measured:
 cargo run --release -p moonframe-portable-example --example bench
 ```
 
-On an Apple M4 Max (medians of three runs), the native build starts in 0.2 ms
-and the prebuilt component in 15.6 ms (236 ms from source, where Cargo checks
-the crate first). A message comes back published in 7.0 µs native and 8.6 µs
-wasm. See [How the two builds
+It also runs `bench/providers/digest`, a provider doing real work: each cycle
+it fetches request-log lines through a host capability, parses them and
+publishes per-route latency percentiles.
+
+On an Apple M4 Max (medians of three runs), digesting 50,000 lines takes
+8.9 ms native and 21.6 ms as a wasm component built for size (15.2 ms built
+for speed, `opt-level = 3`), about 2.4× and 1.7×. The native build starts in
+0.2 ms and the prebuilt component in 15.6 ms. See [How the two builds
 compare](../../docs/wasm-providers.md#how-the-two-builds-compare).
 
 ## Choosing a build

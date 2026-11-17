@@ -2063,7 +2063,11 @@ terminal log. There are four kinds:
     folder `kind = "native"` (with the same `capabilities` and `[settings]`).
     Keep it portable: state in `self`, the machine only through
     capabilities, and its logic unit-tested natively with `cargo test`.
-    `examples/portable` runs one crate both ways side by side.
+    `examples/portable` runs one crate both ways side by side. Measured
+    there, compiled in runs real work about 2.4× faster than a component
+    built with `opt-level = "s"` (1.7× than `opt-level = 3`, which a Wasm
+    provider that computes much should use) and starts in 0.2 ms against
+    15.6 ms; the guide's "How the two builds compare" has the numbers.
   - With a `Cargo.toml` and Cargo installed (looked up on `PATH`, then in
     `~/.cargo/bin`), the host builds the crate when it starts and when its
     source changes, into `~/.cache/moonframe/providers`; a compile error
