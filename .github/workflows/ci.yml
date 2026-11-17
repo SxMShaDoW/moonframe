@@ -205,7 +205,9 @@ jobs:
       matrix:
         runner: [macos-15, ubuntu-24.04, ubuntu-24.04-arm, windows-2025]
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
+    # Windows builds and links the most slowly: from a cold cache it takes
+    # about 50 minutes on main, too close to the others' hour.
+    timeout-minutes: ${{ matrix.runner == 'windows-2025' && 90 || 60 }}
     permissions:
       contents: read
     steps:

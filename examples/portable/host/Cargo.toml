@@ -17,6 +17,9 @@ workspace = true
 [[bin]]
 name = "portable-example"
 path = "src/main.rs"
+# No tests of its own (the provider's are in its crate): `cargo test
+# --workspace` would otherwise link a whole GPUI app for an empty harness.
+test = false
 
 [dependencies]
 # The provider crate, linked in as an ordinary dependency.
