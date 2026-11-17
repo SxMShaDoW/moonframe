@@ -3243,6 +3243,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
+name = "focus"
+version = "0.1.0"
+dependencies = [
+ "moonframe-provider",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "foldhash"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6690,6 +6699,14 @@ dependencies = [
  "moonframe-providers",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "moonframe-portable-example"
+version = "1.2.0"
+dependencies = [
+ "focus",
+ "moonframe",
 ]
 
 [[package]]

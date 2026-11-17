@@ -333,8 +333,16 @@ and `host_call` reach the app with the same `capabilities` from provider.toml
 (`system` needs the app's `system` or `wasm` feature). What differs: it has
 the user's access and no fuel or memory limits, so link only code you would
 run yourself; `save` hands state to the next start only within one launch;
-and a change needs the app rebuilt. `examples/capability-provider` builds
-both ways.
+and a change needs the app rebuilt.
+
+`examples/portable` is a complete example to copy: a focus timer crate in
+`app/providers/focus` (settings, ticks, messages, `save`/`restore`, and unit
+tests that run natively), run as a component from that folder and compiled in
+for `app/providers/focus-native`, side by side in one window. Its `host/`
+binary sits beside the app folder, not around it: Cargo counts any crate
+inside a workspace member's folder as a member, so a provider crate there
+could not keep its own `[workspace]`. `examples/capability-provider` builds
+both ways too.
 
 ## Host-defined capabilities and external miniapps
 

@@ -405,8 +405,15 @@ and <code>host_call</code> reach the app with the same <code>capabilities</code>
 (<code>system</code> needs the app's <code>system</code> or <code>wasm</code> feature). What differs: it has
 the user's access and no fuel or memory limits, so link only code you would
 run yourself; <code>save</code> hands state to the next start only within one launch;
-and a change needs the app rebuilt. <code>examples/capability-provider</code> builds
-both ways.</p>
+and a change needs the app rebuilt.</p>
+<p><code>examples/portable</code> is a complete example to copy: a focus timer crate in
+<code>app/providers/focus</code> (settings, ticks, messages, <code>save</code>/<code>restore</code>, and unit
+tests that run natively), run as a component from that folder and compiled in
+for <code>app/providers/focus-native</code>, side by side in one window. Its <code>host/</code>
+binary sits beside the app folder, not around it: Cargo counts any crate
+inside a workspace member's folder as a member, so a provider crate there
+could not keep its own <code>[workspace]</code>. <code>examples/capability-provider</code> builds
+both ways too.</p>
 <h2 id="host-defined-capabilities-and-external-miniapps">Host-defined capabilities and external miniapps</h2>
 <p>An embedding app can expose a narrow JSON API to Wasm:</p>
 <pre><code class="language-rust">use moonframe::{Caller, HostCapability, Moonframe, RootPolicy};

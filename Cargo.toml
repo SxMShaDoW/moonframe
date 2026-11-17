@@ -1,5 +1,5 @@
 [workspace]
-exclude = ["app/providers", "crates/moonframe-provider"]
+exclude = ["app/providers", "crates/moonframe-provider", "examples/portable/app/providers"]
 members = [
   "crates/moonframe",
   "crates/moonframe-acp",
@@ -27,6 +27,7 @@ members = [
   "crates/moonframe-transcripts",
   "crates/moonframe-usage",
   "examples/host",
+  "examples/portable/host",
 ]
 resolver = "2"
 

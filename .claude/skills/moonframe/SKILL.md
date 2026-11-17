@@ -2050,11 +2050,20 @@ terminal log. There are four kinds:
 - **`kind = "wasm"`:** a WebAssembly (WASM) component implementing
   `wit/provider.wit`, shipped as `provider.wasm` in the folder, or as the
   Rust crate it is built from (`Cargo.toml` with `crate-type = ["cdylib"]`
-  and its own empty `[workspace]`, plus `src/lib.rs` using
-  `wit_bindgen::generate!`).
-  - It exports `start(settings)`, `tick()` every `interval` seconds, and
-    `receive(message)`. All values are JSON text, and `tick` and `receive`
-    return JSON to publish, or nothing.
+  and its own empty `[workspace]`).
+  - Write new ones with the SDK, `crates/moonframe-provider`: implement
+    `moonframe_provider::Provider` (`start(settings) -> Result<Self>`,
+    `tick`, `receive`, optional `save`/`restore`, all `serde_json::Value`;
+    `tick` and `receive` return what to publish, or `None`) and end with
+    `moonframe_provider::export!(MyProvider)`. Older ones call
+    `wit_bindgen::generate!` on `wit/provider.wit` directly.
+  - An SDK crate also compiles into an app on the library, unchanged: add
+    `"rlib"` to its `crate-type`, depend on it, register
+    `.native("name", moonframe::Portable::<MyProvider>::new)`, and give that
+    folder `kind = "native"` (with the same `capabilities` and `[settings]`).
+    Keep it portable: state in `self`, the machine only through
+    capabilities, and its logic unit-tested natively with `cargo test`.
+    `examples/portable` runs one crate both ways side by side.
   - With a `Cargo.toml` and Cargo installed (looked up on `PATH`, then in
     `~/.cargo/bin`), the host builds the crate when it starts and when its
     source changes, into `~/.cache/moonframe/providers`; a compile error
@@ -2082,7 +2091,8 @@ terminal log. There are four kinds:
     dependencies minimal. Something from elsewhere should come as
     `provider.wasm` alone.
     The host refuses to build a folder with a `build.rs` or a `.cargo/`.
-  - `app/providers/system` and `examples/capability-provider` are examples. For a complete walkthrough,
+  - `examples/portable` (both builds), `app/providers/system` and
+    `examples/capability-provider` are examples. For a complete walkthrough,
     read [Building WebAssembly (WASM) providers](https://docs.moonframe.dev/wasm-providers/)
     ([Markdown for agents](https://raw.githubusercontent.com/moonframehq/moonframe/main/docs/wasm-providers.md)):
     crate setup, the WIT interface, JSON messages, a Luau view, checks and packaging.
