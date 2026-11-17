@@ -285,6 +285,57 @@ let a changed setting win over the saved state.
 - **A running provider panics.** It has nothing left to save, so the next
   build starts fresh. Only state from a clean stop is handed on.
 
+## Compile it into the app
+
+A provider written against the guest SDK builds either way from the same
+source: as a component, sandboxed and rebuilt as you edit, or linked into the
+app as an ordinary crate, with no wasmtime, Cargo or sandbox at run time.
+
+```rust
+// providers/counter/src/lib.rs
+use {moonframe_provider::Provider, serde_json::Value};
+
+pub struct Counter(u64);
+
+impl Provider for Counter {
+    fn start(_settings: Value) -> Result<Self, String> {
+        Ok(Self(0))
+    }
+
+    fn tick(&mut self) -> Option<Value> {
+        self.0 += 1;
+        Some(self.0.into())
+    }
+
+    fn receive(&mut self, message: Value) -> Option<Value> {
+        (message == "reset").then(|| { self.0 = 0; self.0.into() })
+    }
+}
+
+moonframe_provider::export!(Counter); // the component's exports; nothing natively
+```
+
+Give the crate `crate-type = ["cdylib", "rlib"]` so the app can depend on it,
+then register it under the folder's name and switch the folder's kind:
+
+```rust
+Moonframe::new(...).native("counter", moonframe::Portable::<counter::Counter>::new)
+```
+
+```toml
+# providers/counter/provider.toml
+kind = "native"     # was "wasm"; the rest stays as it was
+```
+
+Compiled in, it is called in the same order (`start`, `restore`, a first
+`tick` published at once, then ticks and messages) and `log`, `system_load`
+and `host_call` reach the app with the same `capabilities` from provider.toml
+(`system` needs the app's `system` or `wasm` feature). What differs: it has
+the user's access and no fuel or memory limits, so link only code you would
+run yourself; `save` hands state to the next start only within one launch;
+and a change needs the app rebuilt. `examples/capability-provider` builds
+both ways.
+
 ## Host-defined capabilities and external miniapps
 
 An embedding app can expose a narrow JSON API to Wasm:
@@ -429,10 +480,12 @@ be namespaced with dots; unprefixed names and `moonframe.*` are reserved.
 optional namespace, and all declared capability names.
 
 The standalone Rust guest SDK is `crates/moonframe-provider` (add it as a path
-or git dependency). Implement `moonframe_provider::bindings::Guest` and export
-with `moonframe_provider::bindings::export!(MyProvider with_types_in
-moonframe_provider::bindings)`. Enable its `stateful` feature for save/restore.
-Its typed helper serializes arguments and deserializes the JSON answer:
+or git dependency). Implement `moonframe_provider::Provider` and export it with
+`moonframe_provider::export!(MyProvider)`; the same crate can then be compiled
+into the app too (see [Compile it into the app](#compile-it-into-the-app)).
+Enable its `stateful` feature for save/restore. The raw WIT bindings stay
+available on wasm32 as `moonframe_provider::bindings`. Its typed helper
+serializes arguments and deserializes the JSON answer:
 
 ```rust
 let answer: serde_json::Value = moonframe_provider::host_call(
