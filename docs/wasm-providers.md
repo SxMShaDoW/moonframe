@@ -344,6 +344,34 @@ inside a workspace member's folder as a member, so a provider crate there
 could not keep its own `[workspace]`. `examples/capability-provider` builds
 both ways too.
 
+### How the two builds compare
+
+`examples/portable/host/examples/bench.rs` runs the example's `focus` provider
+both ways through the provider runtime the app uses, so the numbers are what a
+view waits for. Medians of three runs on an Apple M4 Max (macOS, release build):
+
+| | Wasm | Native |
+| --- | --- | --- |
+| Start, to the first data | 15.6 ms prebuilt (`provider.wasm`); 236 ms from source, Cargo finding nothing to build; 7.2 s for the first build | 0.2 ms |
+| Message to published answer, median | 8.6 µs | 7.0 µs |
+| Same, p99 | 17.4 µs | 13.5 µs |
+| Messages per second, one at a time | about 109,000 | about 145,000 |
+
+The prebuilt component is 160 KiB. Most of a round trip is the runtime's own
+hop to the provider's thread and back, which both builds share; Wasm adds about
+1.5 µs a call for crossing into the component and checking what it returns. At
+one tick a second either cost is too small to notice. Startup differs more:
+wasmtime compiles the component each time it starts, and a provider built from
+source asks Cargo first. Compiling in pays off for an app that starts often
+or runs many providers. This provider does almost no work per call, so heavy
+computation inside one was not measured here.
+
+Run it yourself (it needs `rustup target add wasm32-wasip2`):
+
+```sh
+cargo run --release -p moonframe-portable-example --example bench
+```
+
 ## Host-defined capabilities and external miniapps
 
 An embedding app can expose a narrow JSON API to Wasm:

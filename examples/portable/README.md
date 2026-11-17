@@ -34,6 +34,21 @@ cargo test --manifest-path examples/portable/app/providers/focus/Cargo.toml
 Edit `app/providers/focus/src/lib.rs` while it runs: the wasm panel rebuilds
 and keeps its time; the native one changes on the next `cargo run`.
 
+## How fast each is
+
+`host/examples/bench.rs` runs this provider both ways through the provider
+runtime and prints what it measured:
+
+```sh
+cargo run --release -p moonframe-portable-example --example bench
+```
+
+On an Apple M4 Max (medians of three runs), the native build starts in 0.2 ms
+and the prebuilt component in 15.6 ms (236 ms from source, where Cargo checks
+the crate first). A message comes back published in 7.0 µs native and 8.6 µs
+wasm. See [How the two builds
+compare](../../docs/wasm-providers.md#how-the-two-builds-compare).
+
 ## Choosing a build
 
 - **wasm** (`kind = "wasm"`): sandboxed (no files, network or environment,

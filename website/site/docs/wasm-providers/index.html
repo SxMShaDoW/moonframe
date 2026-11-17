@@ -414,6 +414,52 @@ binary sits beside the app folder, not around it: Cargo counts any crate
 inside a workspace member's folder as a member, so a provider crate there
 could not keep its own <code>[workspace]</code>. <code>examples/capability-provider</code> builds
 both ways too.</p>
+<h3 id="how-the-two-builds-compare">How the two builds compare</h3>
+<p><code>examples/portable/host/examples/bench.rs</code> runs the example's <code>focus</code> provider
+both ways through the provider runtime the app uses, so the numbers are what a
+view waits for. Medians of three runs on an Apple M4 Max (macOS, release build):</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Wasm</th>
+<th>Native</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Start, to the first data</td>
+<td>15.6 ms prebuilt (<code>provider.wasm</code>); 236 ms from source, Cargo finding nothing to build; 7.2 s for the first build</td>
+<td>0.2 ms</td>
+</tr>
+<tr>
+<td>Message to published answer, median</td>
+<td>8.6 µs</td>
+<td>7.0 µs</td>
+</tr>
+<tr>
+<td>Same, p99</td>
+<td>17.4 µs</td>
+<td>13.5 µs</td>
+</tr>
+<tr>
+<td>Messages per second, one at a time</td>
+<td>about 109,000</td>
+<td>about 145,000</td>
+</tr>
+</tbody>
+</table>
+<p>The prebuilt component is 160 KiB. Most of a round trip is the runtime's own
+hop to the provider's thread and back, which both builds share; Wasm adds about
+1.5 µs a call for crossing into the component and checking what it returns. At
+one tick a second either cost is too small to notice. Startup differs more:
+wasmtime compiles the component each time it starts, and a provider built from
+source asks Cargo first. Compiling in pays off for an app that starts often
+or runs many providers. This provider does almost no work per call, so heavy
+computation inside one was not measured here.</p>
+<p>Run it yourself (it needs <code>rustup target add wasm32-wasip2</code>):</p>
+<pre><code class="language-sh">cargo run --release -p moonframe-portable-example --example bench
+</code></pre>
 <h2 id="host-defined-capabilities-and-external-miniapps">Host-defined capabilities and external miniapps</h2>
 <p>An embedding app can expose a narrow JSON API to Wasm:</p>
 <pre><code class="language-rust">use moonframe::{Caller, HostCapability, Moonframe, RootPolicy};

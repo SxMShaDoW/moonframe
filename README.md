@@ -96,7 +96,8 @@ and how to try it.
   and come back on the next launch.
 - **Providers** for data Luau can't reach, publishing what views read as
   `app.<name>`: sandboxed WebAssembly (WASM) components, plain processes, or Rust
-  built into the app. The built-in ones cover git (status, diffs, commit and
+  built into the app. One Rust provider can build as either a component or
+  built-in code. The built-in ones cover git (status, diffs, commit and
   push), GitHub and GitLab, the project's files and markdown documents, the
   system's load, and coding agents.
 - **Coding agents in the app.** The `acp` provider runs Claude, Codex,
@@ -330,6 +331,14 @@ Write a provider as a WASM component if it only shapes data or if it comes
 from someone else. A bug or bad actor in it can't read your files or reach
 the network. Keep process and native providers for things the sandbox
 can't reach, and read them as you would any script.
+
+A Rust provider written with the `moonframe-provider` SDK builds either way
+from the same source: as a WASM component, or compiled into an app on the
+library with `moonframe::Portable`, trading the sandbox for faster starts.
+[`examples/portable`](examples/portable) runs one both ways side by side. On
+an Apple M4 Max, the compiled-in build starts in 0.2 ms against 15.6 ms for
+the prebuilt component, and answers a message in 7.0 µs against 8.6 µs
+([how the two builds compare](docs/wasm-providers.md#how-the-two-builds-compare)).
 
 The sandbox only covers the running component. Building it runs Cargo as
 your user, including proc macros and dependency build scripts. The host
