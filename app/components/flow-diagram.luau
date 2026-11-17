@@ -22,6 +22,8 @@ type Flow = { path: { string }, tokens: { string }, lane: number? }
 -- Where a node sits: the centre of its cell, as fractions of the box.
 type Point = { x: number, y: number, col: number, row: number }
 type Size = { w: number, h: number, slot: number, icon: number }
+-- One step of a flow's path, `len` cells long.
+type Step = { from: Point, to: Point, len: number }
 type Props = {
 	nodes: { Node },
 	links: { Link }?,
@@ -49,9 +51,9 @@ local function tone_of(name: string?): string?
 end
 
 -- A link under the nodes, with a head at the edge of the node it points at.
--- Only the node's own size is in pixels.
-local function link(a: Point, b: Point, size: Size, label: string?)
-	if math.abs(a.y - b.y) < 0.001 then
+-- Only the node's own size is in pixels. Its word is drawn by `link_label`.
+local function link(a: Point, b: Point, size: Size)
+	if a.row == b.row then
 		local right = b.x > a.x
 		return ui.row {
 			area = { left = math.min(a.x, b.x), top = a.y - 0.08, width = math.abs(b.x - a.x), height = 0.16 },
@@ -59,13 +61,7 @@ local function link(a: Point, b: Point, size: Size, label: string?)
 			gap = "none",
 			ui.row { width = size.w / 2 + 2 },
 			not right and ui.icon { name = "chevron-left", size = "small", class = "flow-diagram-head" },
-			ui.column {
-				grow = true,
-				gap = "none",
-				ui.row { height = 14, justify = "center", label and ui.text { label, class = "flow-diagram-link-label" } },
-				ui.row { class = "flow-diagram-line", height = 2 },
-				ui.row { height = 14 },
-			},
+			ui.row { class = "flow-diagram-line", grow = true, height = 2 },
 			right and ui.icon { name = "chevron-right", size = "small", class = "flow-diagram-head" },
 			ui.row { width = size.w / 2 + 2 },
 		}
@@ -83,19 +79,57 @@ local function link(a: Point, b: Point, size: Size, label: string?)
 	}
 end
 
--- The tokens of one flow, spread evenly along its path at this time.
-local function tokens(flow: Flow, at: { [string]: Point }, seconds: number, speed: number, into: { any })
-	local points: { Point }, lens: { number }, total = {}, {}, 0
-	for _, id in flow.path do
-		if at[id] then
-			table.insert(points, at[id])
-		end
+-- The word on a link, drawn after the nodes so no card covers it: above the
+-- two cards of a level link, centred between them; beside an upright link,
+-- near the card it points at.
+local function link_label(a: Point, b: Point, size: Size, cols: number, rows: number, label: string)
+	local word = ui.text { label, class = "flow-diagram-link-label" }
+	if a.row == b.row then
+		return ui.column {
+			area = { left = math.min(a.x, b.x), top = a.y - 0.5 / rows, width = math.abs(b.x - a.x), height = 0.5 / rows },
+			align = "center",
+			justify = "end",
+			gap = "none",
+			word,
+			ui.row { height = size.h / 2 + 2 },
+		}
 	end
-	for i = 2, #points do
-		-- A cell is wider than it is high: weigh the two so the speed looks even.
-		local dx, dy = (points[i].x - points[i - 1].x) * 3, (points[i].y - points[i - 1].y) * 1.8
-		lens[i - 1] = math.sqrt(dx * dx + dy * dy)
-		total += lens[i - 1]
+	local down = b.y > a.y
+	return ui.column {
+		area = { left = a.x, top = math.min(a.y, b.y), width = 0.5 / cols, height = math.abs(b.y - a.y) },
+		align = "start",
+		justify = if down then "end" else "start",
+		gap = "none",
+		not down and ui.row { height = size.h / 2 + 2 },
+		ui.row { class = "flow-diagram-link-label-side", word },
+		down and ui.row { height = size.h / 2 + 2 },
+	}
+end
+
+-- Whether a link can be drawn between `a` and `b`: only level and upright
+-- ones can. A slanted link is left out, and tokens do not travel it.
+local function drawable(a: Point, b: Point): boolean
+	return a.row == b.row or a.col == b.col
+end
+
+-- The tokens of one flow, spread evenly along its path at this time. A
+-- step's length is the cells it crosses, so a `speed` is the same in any
+-- grid. A slanted step is left out: the tokens skip over it.
+local function tokens(flow: Flow, at: { [string]: Point }, seconds: number, speed: number, into: { any })
+	local steps: { Step }, total = {}, 0
+	local last: Point? = nil
+	for _, id in flow.path do
+		local here = at[id]
+		if here then
+			if last and drawable(last, here) then
+				local len = math.abs(here.col - last.col) + math.abs(here.row - last.row)
+				if len > 0 then
+					table.insert(steps, { from = last, to = here, len = len })
+					total += len
+				end
+			end
+			last = here
+		end
 	end
 	if total <= 0 or #flow.tokens == 0 then
 		return
@@ -103,15 +137,15 @@ local function tokens(flow: Flow, at: { [string]: Point }, seconds: number, spee
 	for n, tone in flow.tokens do
 		local along = (seconds * speed + (n - 1) * total / #flow.tokens) % total
 		local i = 1
-		while i < #lens and along > lens[i] do
-			along -= lens[i]
+		while i < #steps and along > steps[i].len do
+			along -= steps[i].len
 			i += 1
 		end
-		local from, to = points[i], points[i + 1]
-		local f = along / lens[i]
+		local from, to = steps[i].from, steps[i].to
+		local f = along / steps[i].len
 		local x, y = from.x + (to.x - from.x) * f, from.y + (to.y - from.y) * f
 		-- Two flows on one link go side by side.
-		if math.abs(from.y - to.y) < 0.001 then
+		if from.row == to.row then
 			y += (flow.lane or 0) * 0.022
 		else
 			x += (flow.lane or 0) * 0.016
@@ -143,13 +177,16 @@ local function card(node: Node, size: Size, props: Props)
 	return ui.column {
 		class = classes,
 		selected = props.selected == node.id,
-		width = size.w,
+		-- At most its size, and never more than its cell.
+		grow = true,
+		max_width = size.w,
 		height = size.h,
 		justify = "center",
 		gap = "none",
 		msg = { [props.event or "select"] = node.id },
 		to = props.to,
-		tooltip = node.sublabel,
+		-- A name cut short in a narrow cell shows whole here.
+		tooltip = if node.sublabel then `{node.label}: {node.sublabel}` else node.label,
 		ui.row {
 			class = "flow-diagram-top",
 			align = "center",
@@ -162,8 +199,10 @@ local function card(node: Node, size: Size, props: Props)
 				justify = "center",
 				ui.icon { name = (node.icon or "circle") :: any, size = "small" },
 			},
+			-- No width of its own, only what is free: a narrow card cuts the text short.
 			ui.column {
 				grow = true,
+				width = 0,
 				gap = "none",
 				ui.text { node.label, class = "flow-diagram-label", truncate = true },
 				node.sublabel and not meter and ui.text { node.sublabel, class = "flow-diagram-sublabel", truncate = true },
@@ -184,7 +223,7 @@ local function card(node: Node, size: Size, props: Props)
 					height = 4,
 				},
 			},
-			ui.row { grow = true, ui.text { meter.text, class = { "flow-diagram-meter-text", `flow-diagram-text-{meter_tone}` }, truncate = true } },
+			ui.row { grow = true, width = 0, ui.text { meter.text, class = { "flow-diagram-meter-text", `flow-diagram-text-{meter_tone}` }, truncate = true } },
 		},
 	}
 end
@@ -203,17 +242,17 @@ return component {
 	when = "Explain how the parts of a system talk to each other, and what moves between them now: a request path, a cache miss, a retry, a pipeline. The caller places each node in a grid cell, so the same diagram fits a side panel and a full pane. Pass a growing `time` to move the tokens; leave it out for a still diagram. For a line of commits use `commit-graph`; for a tree use `tree`; for places on a map use `route-map`.",
 	props = {
 		["nodes"] = "{ id, label, sublabel?, icon?, col, row, tone?, note?, meter? = { text, level?, tone? }, planned? }: `col` and `row` count from 0; `tone` is accent | success | warning | danger",
-		["links"] = "{ from, to, label? }: two nodes in one row or one column (a slanted link is left out); the head points at `to`",
-		["groups"] = "{ label, nodes = { ids } }: a tinted box around the cells of its nodes",
-		["flows"] = "{ path = { ids }, tokens = { tones }, lane? }: one token for each tone, spread along the path; `lane` (-1, 0, 1) keeps two flows on one link apart",
+		["links"] = "{ from, to, label? }: two nodes in one row or one column (a slanted link is left out); the head points at `to`; `label` shows above a level link and beside an upright one",
+		["groups"] = "{ label, nodes = { ids } }: a tinted box around the cells of its nodes, its label at the top right",
+		["flows"] = "{ path = { ids }, tokens = { tones }, lane? }: one token for each tone, spread along the path, skipping a slanted step; `lane` (-1, 0, 1) keeps two flows on one link apart",
 		["columns"] = "the grid's width in cells (default: what the nodes use)",
 		["rows"] = "the grid's height in cells (default: what the nodes use)",
 		["time"] = "seconds: where the tokens are. The caller owns the clock",
-		["speed"] = "how far a token goes each second, in cells (default 0.55)",
+		["speed"] = "how far a token goes each second, in cells along its path (default 0.55): the same in any grid",
 		["selected"] = "the id of the node to show as picked",
 		["event"] = "key of the message a click on a node sends, default \"select\": { select = id }",
 		["to"] = "mod to send the click to, if not the drawing one",
-		["size"] = "small | normal: the size of a node",
+		["size"] = "small | normal: the most a node takes. In a narrow cell it narrows to fit and cuts its name short (the tooltip shows it whole); below about 170 pixels a column, a level link between neighbours hides under the cards, and only its word shows",
 		["height"] = "pixels (default 120 for each row)",
 	},
 	styles = {
@@ -221,6 +260,8 @@ return component {
 		[".flow-diagram-line"] = { background = "muted-foreground/55" },
 		[".flow-diagram-head"] = { color = "muted-foreground" },
 		[".flow-diagram-link-label"] = { color = "muted-foreground", font_size = 10 },
+		[".flow-diagram-link-label-side"] = { padding = { left = 10 } },
+		[".flow-diagram-cell"] = { padding = { x = 4 } },
 		[".flow-diagram-group"] = { background = "accent/8", border = "all", border_color = "accent/30", radius = 12 },
 		[".flow-diagram-group-label"] = { color = "accent", font_size = 10, weight = "medium", padding = { 4, 8 } },
 		[".flow-diagram-token"] = { radius = 5, border = "all", border_color = "background" },
@@ -326,7 +367,8 @@ flow_diagram {
 							width = (right - left + 0.92) / cols,
 							height = (bottom - top + 0.92) / rows,
 						},
-						ui.row { ui.text { group.label, class = "flow-diagram-group-label" } },
+						-- At the right: a level link's word often sits on the left edge.
+						ui.row { justify = "end", ui.text { group.label, class = "flow-diagram-group-label" } },
 					}
 				)
 			end
@@ -334,8 +376,8 @@ flow_diagram {
 		for _, each in ipairs(props.links or {}) do
 			local a, b = at[each.from], at[each.to]
 			-- Only level and upright links can be drawn; a slanted one is left out.
-			if a and b and (a.row == b.row or a.col == b.col) then
-				table.insert(kids, link(a, b, size, each.label))
+			if a and b and drawable(a, b) then
+				table.insert(kids, link(a, b, size))
 			end
 		end
 		if props.time then
@@ -355,7 +397,7 @@ flow_diagram {
 					gap = "none",
 					-- An empty slot above balances the note below: the card stays on the links.
 					ui.row { height = size.slot },
-					card(node, size, props),
+					ui.row { class = "flow-diagram-cell", self_align = "stretch", justify = "center", card(node, size, props) },
 					ui.row {
 						height = size.slot,
 						align = "end",
@@ -364,6 +406,12 @@ flow_diagram {
 					},
 				}
 			)
+		end
+		for _, each in ipairs(props.links or {}) do
+			local a, b = at[each.from], at[each.to]
+			if a and b and each.label and drawable(a, b) then
+				table.insert(kids, link_label(a, b, size, cols, rows, each.label))
+			end
 		end
 		return ui.row { class = "flow-diagram", height = props.height or rows * 120, table.unpack(kids) }
 	end,

@@ -25,7 +25,7 @@ local NODES: { any } = {
 local LINKS: { any } = {
 	{ from = "web", to = "api", label = "HTTPS" },
 	{ from = "api", to = "db", label = "on a miss" },
-	{ from = "api", to = "cache" },
+	{ from = "api", to = "cache", label = "read" },
 	{ from = "cache", to = "queue" },
 }
 
