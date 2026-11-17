@@ -159,3 +159,11 @@ impl MoonframeApp {
         .redraw(source, size, kept, cx)
     }
 }
+
+#[cfg(test)]
+impl MoonframeApp {
+    /// Whether the frame drawn last replayed what stood still in it.
+    pub(crate) fn replayed_last_frame(&self) -> bool {
+        self.cached.replayed()
+    }
+}

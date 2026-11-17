@@ -12,6 +12,7 @@ mod inspect_context;
 mod regressions;
 mod revision_timeline;
 mod scroll_sync;
+mod spinner;
 mod windows;
 
 use {
