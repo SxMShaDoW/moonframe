@@ -25,3 +25,12 @@ test = false
 # The provider crate, linked in as an ordinary dependency.
 focus               = { path = "../app/providers/focus" }
 moonframe.workspace = true
+
+# For examples/bench, which runs the provider both ways through the
+# provider runtime itself.
+[dev-dependencies]
+# The bench's workload: a provider that digests request logs.
+digest               = { path = "../bench/providers/digest" }
+moonframe-providers  = { features = ["wasm"], workspace = true }
+serde_json.workspace = true
+tempfile.workspace   = true

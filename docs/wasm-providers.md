@@ -344,6 +344,66 @@ inside a workspace member's folder as a member, so a provider crate there
 could not keep its own `[workspace]`. `examples/capability-provider` builds
 both ways too.
 
+### How the two builds compare
+
+`examples/portable/host/examples/bench` runs providers both ways through the
+provider runtime the app uses, so the numbers are what a view waits for. All
+figures are medians, from three runs on an Apple M4 Max (macOS, release build).
+
+**Calls and startup.** The example's `focus` timer does almost no work per call,
+so this is the runtime's own cost:
+
+| | Wasm | Native |
+| --- | --- | --- |
+| Start, to the first data | 15.6 ms prebuilt (`provider.wasm`); 236 ms from source, Cargo finding nothing to build; 7.2 s for the first build | 0.2 ms |
+| Message to published answer, median | 8.6 µs | 7.0 µs |
+| Same, p99 | 17.4 µs | 13.5 µs |
+| Messages per second, one at a time | about 109,000 | about 145,000 |
+
+Most of a round trip is the hop to the provider's thread and back, which both
+builds share; Wasm adds about 1.5 µs a call. Startup differs more: wasmtime
+compiles the component each time it starts (160 KiB here), and a provider built
+from source asks Cargo first.
+
+**A real workload.** `examples/portable/bench/providers/digest` does what Wasm
+providers are for, shaping data: each cycle it fetches a batch of request-log
+lines through a host capability, parses every line, folds numeric path
+segments into `:id`, works out per-route counts, error rates and p50/p95/p99
+latencies, and publishes the 50 busiest routes. One cycle, message to
+published summary (the `opt-level = 3` column, in brackets in the last, is
+from one run):
+
+| Lines | Batch | Wasm, `opt-level = "s"` | Wasm, `opt-level = 3` | Native | Wasm ÷ native |
+| --- | --- | --- | --- | --- | --- |
+| 1,000 | 59 KiB | 0.7 ms | 0.5 ms | 0.3 ms | 2.4× (1.7×) |
+| 10,000 | 596 KiB | 4.5 ms | 3.3 ms | 1.8 ms | 2.5× (1.8×) |
+| 50,000 | 2.9 MiB | 21.6 ms | 15.2 ms | 8.9 ms | 2.4× (1.7×) |
+
+Moving the lines alone (fetching without digesting, measured in one run each)
+is 1.5× slower in Wasm (1.3× at `opt-level = 3`), so the parsing and sorting itself runs about 3×
+slower, or 2× when optimised for speed. The repository's providers build with
+`opt-level = "s"` for small components; for one that computes much, use
+`opt-level = 3` in its `[profile.release]`.
+
+What this means:
+
+- At an interval of seconds, either build is fast enough: even 50,000 lines a
+  cycle is 22 ms of work as a component.
+- Compiling in pays off for an app that starts often or runs many providers,
+  and for a provider that digests large batches often: 50,000 lines every
+  half second is about 4% of a core as a component, 2% compiled in.
+- A Wasm provider's results cross as JSON text, so a float can come back one
+  bit away from the native build's: the host parses JSON with serde_json's
+  fast float parser.
+- A host call carries at most 1 MiB by default; the 50,000-line batch is
+  2.9 MiB, so the bench raises `HostCallLimits::max_bytes` (for both builds).
+
+Run it yourself (it needs `rustup target add wasm32-wasip2`):
+
+```sh
+cargo run --release -p moonframe-portable-example --example bench
+```
+
 ## Host-defined capabilities and external miniapps
 
 An embedding app can expose a narrow JSON API to Wasm:

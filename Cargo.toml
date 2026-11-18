@@ -1,5 +1,10 @@
 [workspace]
-exclude = ["app/providers", "crates/moonframe-provider", "examples/portable/app/providers"]
+exclude = [
+  "app/providers",
+  "crates/moonframe-provider",
+  "examples/portable/app/providers",
+  "examples/portable/bench/providers",
+]
 members = [
   "crates/moonframe",
   "crates/moonframe-acp",

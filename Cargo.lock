@@ -2513,6 +2513,14 @@ dependencies = [
 
 [[package]]
 name = "digest"
+version = "0.1.0"
+dependencies = [
+ "moonframe-provider",
+ "serde_json",
+]
+
+[[package]]
+name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
@@ -6705,8 +6713,12 @@ dependencies = [
 name = "moonframe-portable-example"
 version = "1.2.0"
 dependencies = [
+ "digest 0.1.0",
  "focus",
  "moonframe",
+ "moonframe-providers",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

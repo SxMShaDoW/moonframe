@@ -188,10 +188,13 @@ providers-examples:
     cargo check --quiet --target wasm32-wasip2 --manifest-path crates/moonframe-provider/Cargo.toml --features stateful --target-dir target/providers
     # examples/portable's provider, as the wasm build its `focus` folder runs.
     just providers examples/portable/app
+    just providers examples/portable/bench
     # The same SDK crates compiled in, as `Portable` links them.
     cargo clippy --quiet --manifest-path examples/capability-provider/Cargo.toml --target-dir target/providers -- -D warnings
     cargo clippy --quiet --all-targets --manifest-path examples/portable/app/providers/focus/Cargo.toml --target-dir target/providers -- -D warnings
     cargo test --quiet --manifest-path examples/portable/app/providers/focus/Cargo.toml --target-dir target/providers
+    cargo clippy --quiet --all-targets --manifest-path examples/portable/bench/providers/digest/Cargo.toml --target-dir target/providers -- -D warnings
+    cargo test --quiet --manifest-path examples/portable/bench/providers/digest/Cargo.toml --target-dir target/providers
     cargo test --quiet --manifest-path crates/moonframe-provider/Cargo.toml --target-dir target/providers
 
 # Download the pinned luau-lsp that `just types` uses (into target/tools).
