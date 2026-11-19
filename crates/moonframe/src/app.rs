@@ -624,6 +624,18 @@ impl MoonframeApp {
     }
 
     fn run(&mut self, command: Command, window: &mut Window, cx: &mut Context<Self>) {
+        // A panel hides; it is never minimized, closed or opened twice.
+        match panel::route(command, window) {
+            Some(panel::Route::Hide) => {
+                panel::hide();
+                return;
+            },
+            Some(panel::Route::Show) => {
+                panel::show();
+                return;
+            },
+            None => {},
+        }
         match command {
             // Unless a mod in any window holds it back.
             Command::Quit => cx.defer(guard::quit),
@@ -637,9 +649,6 @@ impl MoonframeApp {
                 },
                 cx,
             ),
-            // A panel hides; it is never minimized, closed or opened twice.
-            Command::Minimize | Command::CloseWindow if panel::on() => panel::hide(),
-            Command::Activate | Command::NewWindow if panel::on() => panel::show(),
             Command::Minimize => window.minimize_window(),
             Command::Maximize => window.zoom_window(),
             Command::CloseWindow if self.held(guard::Closing::Window, cx) => {},
@@ -699,6 +708,8 @@ impl MoonframeApp {
         if !requests.is_empty() {
             self.carry_out(requests, cx);
         }
+        // After the requests carried out above: whether the panel's item is there.
+        cx.defer(panel::check);
     }
 
     /// Does what mods asked of the app (`to = "app:<what>"`), once the

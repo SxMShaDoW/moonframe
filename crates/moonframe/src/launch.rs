@@ -328,8 +328,10 @@ impl Moonframe {
     /// is a panel under the menu bar item of the mod `owner`
     /// (`app:status-item`). A click on the item shows it, a click elsewhere
     /// hides it, and so do closing it, minimizing it and Cmd-W: the app
-    /// quits only on Quit. The item's menu opens on a right click. Elsewhere,
-    /// and without the `status-item` feature, the window stays a normal one.
+    /// quits only on Quit. The item's menu opens on a right click. While
+    /// `owner` shows no item, the app keeps its Dock icon and the window is a
+    /// normal one, so the app is never out of reach. Elsewhere, and without
+    /// the `status-item` feature, the window stays a normal one.
     pub fn panel(mut self, owner: &str) -> Self {
         self.panel = Some(owner.to_owned());
         self
