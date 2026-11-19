@@ -18,7 +18,7 @@ type Node = {
 }
 type Link = { from: string, to: string, label: string? }
 type Group = { label: string, nodes: { string } }
-type Flow = { path: { string }, tokens: { string }, lane: number? }
+type Flow = { path: { string }, tokens: { string }?, lane: number? }
 -- Where a node sits: the centre of its cell, as fractions of the box.
 type Point = { x: number, y: number, col: number, row: number }
 type Size = { w: number, h: number, slot: number, icon: number }
@@ -53,13 +53,19 @@ end
 -- The space a small chevron icon leaves past its tip, in pixels: the head
 -- sits this much into the card's margin, so its tip meets the card's edge.
 local HEAD_INSET = 4
+-- How far a token on lane 1 or -1 sits from the line, in pixels: two flows
+-- on one link stay apart in any box.
+local LANE_GAP = 7
+-- A token's width and height, in pixels.
+local TOKEN = 10
 
 -- A link, as two layers under the nodes. The line runs from centre to
 -- centre, so it shows in whatever gap the two cards leave, however narrow.
 -- The head sits at the edge of the card it points at; where the cards leave
--- no room for it, it falls under the card it starts from. Only the node's
--- own size is in pixels. Its word is drawn by `link_label`.
-local function link(a: Point, b: Point, size: Size, into: { any })
+-- no room for it, it falls under the card it starts from. Its layer is
+-- half a cell across, so it scales with the cells. Its word is drawn by
+-- `link_label`.
+local function link(a: Point, b: Point, size: Size, cols: number, rows: number, into: { any })
 	local level = a.row == b.row
 	local stack: (any) -> any = if level then ui.row else ui.column
 	local forward = if level then b.x > a.x else b.y > a.y
@@ -67,8 +73,8 @@ local function link(a: Point, b: Point, size: Size, into: { any })
 		then (if forward then "chevron-right" else "chevron-left")
 		else (if forward then "chevron-down" else "chevron-up")
 	local area = if level
-		then { left = math.min(a.x, b.x), top = a.y - 0.08, width = math.abs(b.x - a.x), height = 0.16 }
-		else { left = a.x - 0.05, top = math.min(a.y, b.y), width = 0.1, height = math.abs(b.y - a.y) }
+		then { left = math.min(a.x, b.x), top = a.y - 0.25 / rows, width = math.abs(b.x - a.x), height = 0.5 / rows }
+		else { left = a.x - 0.25 / cols, top = math.min(a.y, b.y), width = 0.5 / cols, height = math.abs(b.y - a.y) }
 	local edge = if level
 		then ui.row { width = size.w / 2 - HEAD_INSET, shrink = false }
 		else ui.row { height = size.h / 2 - HEAD_INSET, shrink = false }
@@ -124,30 +130,50 @@ local function drawable(a: Point, b: Point): boolean
 	return a.row == b.row or a.col == b.col
 end
 
+-- The key of the link between two nodes, the same either way round.
+local function pair(a: string, b: string): string
+	return if a < b then `{a}\0{b}` else `{b}\0{a}`
+end
+
 -- The tokens of one flow, spread evenly along its path at this time. A
 -- step's length is the cells it crosses, so a `speed` is the same in any
--- grid. A slanted step is left out: the tokens skip over it.
-local function tokens(flow: Flow, at: { [string]: Point }, seconds: number, speed: number, into: { any })
-	local steps: { Step }, total = {}, 0
-	local last: Point? = nil
-	for _, id in flow.path do
-		local here = at[id]
-		if here then
-			if last and drawable(last, here) then
-				local len = math.abs(here.col - last.col) + math.abs(here.row - last.row)
-				if len > 0 then
-					table.insert(steps, { from = last, to = here, len = len })
-					total += len
-				end
-			end
-			last = here
-		end
-	end
-	if total <= 0 or #flow.tokens == 0 then
+-- grid. Tokens travel only the drawn links (`linked`, by `pair`): a step
+-- with no link, or through a node that does not exist, is left out, and
+-- the tokens skip over it.
+local function tokens(
+	flow: Flow,
+	at: { [string]: Point },
+	linked: { [string]: boolean },
+	seconds: number,
+	speed: number,
+	cols: number,
+	rows: number,
+	into: { any }
+)
+	local list: { string } = flow.tokens or {}
+	if #list == 0 then
 		return
 	end
-	for n, tone in flow.tokens do
-		local along = (seconds * speed + (n - 1) * total / #flow.tokens) % total
+	local steps: { Step }, total = {}, 0
+	local last: Point?, last_id: string? = nil, nil
+	for _, id in flow.path do
+		local here = at[id]
+		if here and last and last_id and linked[pair(last_id, id)] then
+			local len = math.abs(here.col - last.col) + math.abs(here.row - last.row)
+			if len > 0 then
+				table.insert(steps, { from = last, to = here, len = len })
+				total += len
+			end
+		end
+		-- An unknown node breaks the path: no step jumps over it.
+		last, last_id = here, if here then id else nil
+	end
+	if total <= 0 then
+		return
+	end
+	local lane = math.clamp(flow.lane or 0, -1, 1)
+	for n, tone in list do
+		local along = (seconds * speed + (n - 1) * total / #list) % total
 		local i = 1
 		while i < #steps and along > steps[i].len do
 			along -= steps[i].len
@@ -156,19 +182,30 @@ local function tokens(flow: Flow, at: { [string]: Point }, seconds: number, spee
 		local from, to = steps[i].from, steps[i].to
 		local f = along / steps[i].len
 		local x, y = from.x + (to.x - from.x) * f, from.y + (to.y - from.y) * f
-		-- Two flows on one link go side by side.
-		if from.row == to.row then
-			y += (flow.lane or 0) * 0.022
-		else
-			x += (flow.lane or 0) * 0.016
-		end
+		local dot = ui.row {
+			class = { "flow-diagram-token", `flow-diagram-token-{tone_of(tone) or "plain"}` },
+			width = TOKEN,
+			height = TOKEN,
+			shrink = false,
+		}
+		-- Two flows on one link go side by side, a fixed number of pixels
+		-- apart: a spacer twice the gap on one side moves the centred dot by
+		-- the gap. A level step moves it down or up, an upright one across.
+		local level = from.row == to.row
+		local spacer = lane ~= 0
+			and (if level then ui.row { height = 2 * LANE_GAP, shrink = false } else ui.row { width = 2 * LANE_GAP, shrink = false })
+		local stack: (any) -> any = if level then ui.column else ui.row
+		-- A box of one cell around the point: it scales with the cells.
 		table.insert(
 			into,
-			ui.row {
-				area = { left = x - 0.03, top = y - 0.04, width = 0.06, height = 0.08 },
+			stack {
+				area = { left = x - 0.5 / cols, top = y - 0.5 / rows, width = 1 / cols, height = 1 / rows },
 				align = "center",
 				justify = "center",
-				ui.row { class = { "flow-diagram-token", `flow-diagram-token-{tone_of(tone) or "plain"}` }, width = 10, height = 10 },
+				gap = "none",
+				lane > 0 and spacer,
+				dot,
+				lane < 0 and spacer,
 			}
 		)
 	end
@@ -266,10 +303,10 @@ return component {
 	description = "A small system diagram on a grid: named nodes with an icon and a meter, links between neighbours, a tinted group around nodes, and coloured tokens that travel the links.",
 	when = "Explain how the parts of a system talk to each other, and what moves between them now: a request path, a cache miss, a retry, a pipeline. The caller places each node in a grid cell, so the same diagram fits a side panel and a full pane. Pass a growing `time` to move the tokens; leave it out for a still diagram. For a line of commits use `commit-graph`; for a tree use `tree`; for places on a map use `route-map`.",
 	props = {
-		["nodes"] = "{ id, label, sublabel?, icon?, col, row, tone?, note?, meter? = { text, level?, tone? }, planned? }: `col` and `row` count from 0; `tone` is accent | success | warning | danger",
+		["nodes"] = "{ id, label, sublabel?, icon?, col, row, tone?, note?, meter? = { text, level?, tone? }, planned? }: `col` and `row` count from 0 (a negative one moves the whole grid over); `tone` is accent | success | warning | danger",
 		["links"] = "{ from, to, label? }: two nodes in one row or one column (a slanted link is left out); the head points at `to`; `label` shows above a level link and beside an upright one",
 		["groups"] = "{ label, nodes = { ids } }: a tinted box around the cells of its nodes, its label at the top right",
-		["flows"] = "{ path = { ids }, tokens = { tones }, lane? }: one token for each tone, spread along the path, skipping a slanted step; `lane` (-1, 0, 1) keeps two flows on one link apart",
+		["flows"] = "{ path = { ids }, tokens = { tones }, lane? }: one token for each tone, spread along the path. Tokens travel only steps with a link in `links` (either way round), skipping any other step; `lane` (-1, 0, 1) keeps two flows on one link apart",
 		["columns"] = "the grid's width in cells (default: what the nodes use)",
 		["rows"] = "the grid's height in cells (default: what the nodes use)",
 		["time"] = "seconds: where the tokens are. The caller owns the clock",
@@ -372,13 +409,19 @@ flow_diagram {
 
 	build = function(props: Props)
 		local size = SIZES[props.size or "normal"] or SIZES.normal
+		-- A negative cell moves the whole grid over, so every node is inside the box.
+		local min_col, min_row = 0, 0
+		for _, node in props.nodes do
+			min_col, min_row = math.min(min_col, node.col), math.min(min_row, node.row)
+		end
 		local cols, rows = props.columns or 1, props.rows or 1
 		for _, node in props.nodes do
-			cols, rows = math.max(cols, node.col + 1), math.max(rows, node.row + 1)
+			cols, rows = math.max(cols, node.col - min_col + 1), math.max(rows, node.row - min_row + 1)
 		end
 		local at: { [string]: Point }, kids: { any } = {}, {}
 		for _, node in props.nodes do
-			at[node.id] = { x = (node.col + 0.5) / cols, y = (node.row + 0.5) / rows, col = node.col, row = node.row }
+			local col, row = node.col - min_col, node.row - min_row
+			at[node.id] = { x = (col + 0.5) / cols, y = (row + 0.5) / rows, col = col, row = row }
 		end
 		for _, group in ipairs(props.groups or {}) do
 			local left, top, right, bottom = cols, rows, -1, -1
@@ -406,16 +449,18 @@ flow_diagram {
 				)
 			end
 		end
+		local linked: { [string]: boolean } = {}
 		for _, each in ipairs(props.links or {}) do
 			local a, b = at[each.from], at[each.to]
 			-- Only level and upright links can be drawn; a slanted one is left out.
 			if a and b and drawable(a, b) then
-				link(a, b, size, kids)
+				link(a, b, size, cols, rows, kids)
+				linked[pair(each.from, each.to)] = true
 			end
 		end
 		if props.time then
 			for _, flow in ipairs(props.flows or {}) do
-				tokens(flow, at, props.time, props.speed or 0.55, kids)
+				tokens(flow, at, linked, props.time, props.speed or 0.55, cols, rows, kids)
 			end
 		end
 		for _, node in props.nodes do

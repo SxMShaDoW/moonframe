@@ -61,7 +61,8 @@ fn texts(node: &Node) -> Vec<String> {
     }
 }
 
-/// Where each token's centre is, as fractions of the box.
+/// Where each token's box is centred, as fractions of the box (the dot
+/// itself, on lane 0).
 fn tokens(children: &[Node]) -> Vec<(f32, f32)> {
     children
         .iter()
@@ -75,7 +76,10 @@ fn tokens(children: &[Node]) -> Vec<(f32, f32)> {
                 if !token {
                     return None;
                 }
-                Some((area.left? + 0.03, area.top? + 0.04))
+                Some((
+                    area.left? + area.width? / 2.0,
+                    area.top? + area.height? / 2.0,
+                ))
             },
             _ => None,
         })
@@ -126,10 +130,15 @@ fn flow_diagram_draws_level_and_upright_links_and_leaves_out_a_slanted_one() {
 
 #[test]
 fn flow_diagram_tokens_show_only_with_a_time() {
-    let flows =
-        r#"flows = { { path = { "web", "api", "db" }, tokens = { "warning", "danger" } } }"#;
+    let flows = r#"links = { { from = "web", to = "api" }, { from = "api", to = "db" } },
+        flows = { { path = { "web", "api", "db" }, tokens = { "warning", "danger" } } }"#;
     let still = diagram(flows);
     let moving = diagram(&format!("{flows}, time = 1.5"));
+    // A flow with no tokens draws none, and breaks nothing.
+    let bare = diagram(&format!(
+        "{flows}, time = 1.5, flows = {{ {{ path = {{ \"web\", \"api\" }} }} }}"
+    ));
+    assert_eq!(bare.len(), still.len());
     assert_eq!(moving.len() - still.len(), 2);
 }
 
@@ -162,8 +171,8 @@ fn flow_diagram_draws_every_link_word_over_the_cards() {
 fn flow_diagram_token_speed_is_the_same_in_any_grid() {
     // One token from `web` to `api`, neighbours: at 0.5 cells a second it
     // is half way after one second, however many columns the grid has.
-    let flow =
-        r#"flows = { { path = { "web", "api" }, tokens = { "warning" } } }, time = 1, speed = 0.5"#;
+    let flow = r#"links = { { from = "web", to = "api" } },
+        flows = { { path = { "web", "api" }, tokens = { "warning" } } }, time = 1, speed = 0.5"#;
     for columns in [2.0_f32, 6.0] {
         let drawn = diagram(&format!("{flow}, columns = {columns}"));
         let [(x, _)] = tokens(&drawn)[..] else {
@@ -189,8 +198,10 @@ fn flow_diagram_a_card_never_takes_more_than_its_cell() {
 
 #[test]
 fn flow_diagram_tokens_skip_a_slanted_step() {
-    let slanted =
-        diagram(r#"flows = { { path = { "web", "db" }, tokens = { "warning" } } }, time = 1"#);
+    let slanted = diagram(
+        r#"links = { { from = "web", to = "db" } },
+        flows = { { path = { "web", "db" }, tokens = { "warning" } } }, time = 1"#,
+    );
     assert!(
         tokens(&slanted).is_empty(),
         "no token on a link that is left out"
@@ -198,7 +209,8 @@ fn flow_diagram_tokens_skip_a_slanted_step() {
     // `web` to `db` is slanted and left out; `db` to `api` is upright, in
     // column 1 of 2: every token stays on it.
     let mixed = diagram(
-        r#"flows = { { path = { "web", "db", "api" }, tokens = { "warning", "danger", "success" } } }, time = 0.3"#,
+        r#"links = { { from = "web", to = "db" }, { from = "api", to = "db" } },
+        flows = { { path = { "web", "db", "api" }, tokens = { "warning", "danger", "success" } } }, time = 0.3"#,
     );
     let drawn = tokens(&mixed);
     assert_eq!(drawn.len(), 3);
@@ -270,4 +282,84 @@ fn flow_diagram_a_card_sits_on_an_opaque_plate() {
         );
         assert_eq!((plate.selected, face.selected), (picked, picked));
     }
+}
+
+#[test]
+fn flow_diagram_tokens_travel_only_drawn_links() {
+    // `web` to `api` has a link drawn the other way round: tokens travel it.
+    // `api` to `db` has none, and `typo` names no node: neither is a step,
+    // and no step jumps from `api` over the unknown node to `db`.
+    let drawn = diagram(
+        r#"links = { { from = "api", to = "web" } },
+        flows = { { path = { "web", "api", "typo", "db" }, tokens = { "warning", "danger" } } }, time = 0.4"#,
+    );
+    let found = tokens(&drawn);
+    assert_eq!(found.len(), 2);
+    for (x, y) in found {
+        assert!((y - 0.25).abs() < 0.001, "a token left the level link: {y}");
+        assert!((0.25..=0.75).contains(&x), "a token left the link: {x}");
+    }
+    let unlinked =
+        diagram(r#"flows = { { path = { "web", "api" }, tokens = { "warning" } } }, time = 0.4"#);
+    assert!(tokens(&unlinked).is_empty(), "no token without a link");
+}
+
+#[test]
+fn flow_diagram_lanes_sit_a_fixed_number_of_pixels_apart() {
+    let flows = |lane: i32| {
+        format!(
+            r#"links = {{ {{ from = "web", to = "api" }} }},
+            flows = {{ {{ path = {{ "web", "api" }}, tokens = {{ "warning" }}, lane = {lane} }} }}, time = 0.4"#
+        )
+    };
+    // A spacer of twice the gap on one side of the dot, in pixels, in a
+    // column: down for lane 1, up for lane -1.
+    let spacer = |drawn: &[Node]| -> (usize, Option<f32>) {
+        let layer = drawn
+            .iter()
+            .find_map(|child| match child {
+                Node::Stack(stack)
+                    if stack
+                        .children
+                        .iter()
+                        .any(|each| has_class(each, "flow-diagram-token")) =>
+                {
+                    Some(stack)
+                },
+                _ => None,
+            })
+            .expect("a token");
+        let at = layer
+            .children
+            .iter()
+            .position(|each| !has_class(each, "flow-diagram-token"))
+            .expect("a spacer");
+        match &layer.children[at] {
+            Node::Stack(gap) => (at, gap.frame.height),
+            _ => panic!("the spacer is a row"),
+        }
+    };
+    assert_eq!(spacer(&diagram(&flows(1))), (0, Some(14.0)));
+    assert_eq!(spacer(&diagram(&flows(-1))), (1, Some(14.0)));
+}
+
+#[test]
+fn flow_diagram_a_negative_cell_moves_the_grid_over() {
+    let drawn = diagram(
+        r#"nodes = {
+        { id = "web", label = "Web", col = -1, row = 0 },
+        { id = "api", label = "API", col = 0, row = 0 },
+    }"#,
+    );
+    let left = |id: &str| {
+        drawn
+            .iter()
+            .find_map(|child| match child {
+                Node::Stack(stack) if stack.key.as_deref() == Some(id) => stack.frame.area,
+                _ => None,
+            })
+            .and_then(|area| area.left)
+    };
+    assert_eq!(keys(&drawn), ["web", "api"]);
+    assert_eq!((left("web"), left("api")), (Some(0.0), Some(0.5)));
 }

@@ -1721,11 +1721,11 @@ file_icon { name = "app.go" }
 | --- | --- |
 | `columns` | the grid's width in cells (default: what the nodes use) |
 | `event` | key of the message a click on a node sends, default "select": { select = id } |
-| `flows` | { path = { ids }, tokens = { tones }, lane? }: one token for each tone, spread along the path, skipping a slanted step; `lane` (-1, 0, 1) keeps two flows on one link apart |
+| `flows` | { path = { ids }, tokens = { tones }, lane? }: one token for each tone, spread along the path. Tokens travel only steps with a link in `links` (either way round), skipping any other step; `lane` (-1, 0, 1) keeps two flows on one link apart |
 | `groups` | { label, nodes = { ids } }: a tinted box around the cells of its nodes, its label at the top right |
 | `height` | pixels (default 120 for each row) |
 | `links` | { from, to, label? }: two nodes in one row or one column (a slanted link is left out); the head points at `to`; `label` shows above a level link and beside an upright one |
-| `nodes` | { id, label, sublabel?, icon?, col, row, tone?, note?, meter? = { text, level?, tone? }, planned? }: `col` and `row` count from 0; `tone` is accent \| success \| warning \| danger |
+| `nodes` | { id, label, sublabel?, icon?, col, row, tone?, note?, meter? = { text, level?, tone? }, planned? }: `col` and `row` count from 0 (a negative one moves the whole grid over); `tone` is accent \| success \| warning \| danger |
 | `rows` | the grid's height in cells (default: what the nodes use) |
 | `selected` | the id of the node to show as picked |
 | `size` | small \| normal: the most a node takes. In a narrow cell it narrows to fit and cuts its name short (the tooltip shows it whole); where two cards leave no room for a link's head, the link shows as a short line in the gap between them |
