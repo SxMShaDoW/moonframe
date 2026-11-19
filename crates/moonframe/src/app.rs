@@ -14,7 +14,7 @@ use {
         inspect::{self, Inspector, Placed},
         mod_window::ModWindow,
         motion::Motion,
-        packages,
+        packages, panel,
         paths::{self, Folders},
         render::{Finished, KeyLayer, ListRequest, Painter, cached::Cached},
         settings,
@@ -637,6 +637,9 @@ impl MoonframeApp {
                 },
                 cx,
             ),
+            // A panel hides; it is never minimized, closed or opened twice.
+            Command::Minimize | Command::CloseWindow if panel::on() => panel::hide(),
+            Command::Activate | Command::NewWindow if panel::on() => panel::show(),
             Command::Minimize => window.minimize_window(),
             Command::Maximize => window.zoom_window(),
             Command::CloseWindow if self.held(guard::Closing::Window, cx) => {},

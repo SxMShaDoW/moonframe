@@ -50,6 +50,11 @@ impl MoonframeApp {
     pub(super) fn watch_closing(window: &mut Window, cx: &mut Context<Self>) {
         let app = cx.entity().downgrade();
         window.on_window_should_close(cx, move |_, cx| {
+            // A panel hides, held or not: it never closes, so the app stays.
+            if panel::on() {
+                panel::hide();
+                return false;
+            }
             !app.update(cx, |app, cx| app.held(Closing::Window, cx))
                 .unwrap_or(false)
         });
