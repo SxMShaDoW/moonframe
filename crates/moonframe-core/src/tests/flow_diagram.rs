@@ -82,6 +82,28 @@ fn tokens(children: &[Node]) -> Vec<(f32, f32)> {
         .collect()
 }
 
+fn has_class(node: &Node, class: &str) -> bool {
+    let look = match node {
+        Node::Stack(stack) => &stack.look,
+        Node::Icon(icon) => &icon.look,
+        _ => return false,
+    };
+    look.class.iter().any(|each| each == class)
+}
+
+/// The layers that hold a link's line, and those that hold its head.
+fn link_layers<'a>(children: &'a [Node], inner: &str) -> Vec<&'a Stack> {
+    children
+        .iter()
+        .filter_map(|child| match child {
+            Node::Stack(stack) if stack.children.iter().any(|each| has_class(each, inner)) => {
+                Some(stack)
+            },
+            _ => None,
+        })
+        .collect()
+}
+
 fn sent<'a>(card: &'a Stack, key: &str) -> Option<&'a str> {
     match &card.action {
         Some(Action::Send { msg, .. }) => msg.get(key).and_then(Data::as_str),
@@ -95,10 +117,11 @@ fn flow_diagram_draws_level_and_upright_links_and_leaves_out_a_slanted_one() {
     let linked = diagram(
         r#"links = { { from = "web", to = "api" }, { from = "api", to = "db" }, { from = "web", to = "db" } }"#,
     );
-    // Each node is a keyed cell; the two links it can draw come before them.
+    // Each node is a keyed cell; the two links it can draw come before them,
+    // each as a line and a head.
     assert_eq!(keys(&still), ["web", "api", "db"]);
     assert_eq!(keys(&linked), ["web", "api", "db"]);
-    assert_eq!(linked.len() - still.len(), 2);
+    assert_eq!(linked.len() - still.len(), 4);
 }
 
 #[test]
@@ -184,5 +207,67 @@ fn flow_diagram_tokens_skip_a_slanted_step() {
             (x - 0.75).abs() < 0.001,
             "a token left the upright link: {x}"
         );
+    }
+}
+
+#[test]
+fn flow_diagram_a_link_line_runs_from_centre_to_centre() {
+    let drawn = diagram(r#"links = { { from = "web", to = "api" }, { from = "api", to = "db" } }"#);
+    // Under the cards from one centre to the other, with nothing beside it:
+    // whatever gap two narrow cards leave, the line shows in it.
+    let lines = link_layers(&drawn, "flow-diagram-line");
+    assert_eq!(lines.len(), 2);
+    for line in &lines {
+        assert_eq!(line.children.len(), 1, "the line shares its layer");
+    }
+    let area = |stack: &Stack| stack.frame.area.unwrap();
+    let (level, upright) = (area(lines[0]), area(lines[1]));
+    assert_eq!((level.left, level.width), (Some(0.25), Some(0.5)));
+    assert_eq!((upright.top, upright.height), (Some(0.25), Some(0.5)));
+}
+
+#[test]
+fn flow_diagram_a_link_head_meets_the_card_it_points_at() {
+    let drawn = diagram(r#"links = { { from = "api", to = "web" }, { from = "api", to = "db" } }"#);
+    let heads = link_layers(&drawn, "flow-diagram-head");
+    assert_eq!(heads.len(), 2);
+    // Next to the card it points at, half the card away from its centre,
+    // less the 4 pixels a small chevron leaves past its tip.
+    let edge = |stack: &Stack, at: usize| match &stack.children[at] {
+        Node::Stack(gap) if !gap.frame.shrink => (gap.frame.width, gap.frame.height),
+        _ => panic!("no fixed gap at {at}"),
+    };
+    // `api` to `web` points left: the gap is first. `api` to `db` points down: last.
+    assert_eq!(edge(heads[0], 0), (Some(136.0 / 2.0 - 4.0), None));
+    assert!(has_class(&heads[0].children[1], "flow-diagram-head"));
+    let last = heads[1].children.len() - 1;
+    assert_eq!(edge(heads[1], last), (None, Some(60.0 / 2.0 - 4.0)));
+    assert!(has_class(&heads[1].children[last - 1], "flow-diagram-head"));
+}
+
+#[test]
+fn flow_diagram_a_card_sits_on_an_opaque_plate() {
+    let drawn = diagram(r#"selected = "api""#);
+    // The plate takes the click and the size; the tinted face is inside it,
+    // so a picked card shows the plate, not the lines and tokens under it.
+    for (id, picked) in [("api", true), ("web", false)] {
+        let plate = card(&drawn, id);
+        assert!(
+            plate
+                .look
+                .class
+                .iter()
+                .any(|class| class == "flow-diagram-plate")
+        );
+        let [Node::Stack(face)] = &plate.children[..] else {
+            panic!("expected one face on the plate of {id}");
+        };
+        assert!(
+            face.look
+                .class
+                .iter()
+                .any(|class| class == "flow-diagram-node")
+        );
+        assert_eq!((plate.selected, face.selected), (picked, picked));
     }
 }

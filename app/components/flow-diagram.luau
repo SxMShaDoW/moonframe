@@ -50,33 +50,45 @@ local function tone_of(name: string?): string?
 	return if name and TONES[name] then name else nil
 end
 
--- A link under the nodes, with a head at the edge of the node it points at.
--- Only the node's own size is in pixels. Its word is drawn by `link_label`.
-local function link(a: Point, b: Point, size: Size)
-	if a.row == b.row then
-		local right = b.x > a.x
-		return ui.row {
-			area = { left = math.min(a.x, b.x), top = a.y - 0.08, width = math.abs(b.x - a.x), height = 0.16 },
+-- The space a small chevron icon leaves past its tip, in pixels: the head
+-- sits this much into the card's margin, so its tip meets the card's edge.
+local HEAD_INSET = 4
+
+-- A link, as two layers under the nodes. The line runs from centre to
+-- centre, so it shows in whatever gap the two cards leave, however narrow.
+-- The head sits at the edge of the card it points at; where the cards leave
+-- no room for it, it falls under the card it starts from. Only the node's
+-- own size is in pixels. Its word is drawn by `link_label`.
+local function link(a: Point, b: Point, size: Size, into: { any })
+	local level = a.row == b.row
+	local stack: (any) -> any = if level then ui.row else ui.column
+	local forward = if level then b.x > a.x else b.y > a.y
+	local head = if level
+		then (if forward then "chevron-right" else "chevron-left")
+		else (if forward then "chevron-down" else "chevron-up")
+	local area = if level
+		then { left = math.min(a.x, b.x), top = a.y - 0.08, width = math.abs(b.x - a.x), height = 0.16 }
+		else { left = a.x - 0.05, top = math.min(a.y, b.y), width = 0.1, height = math.abs(b.y - a.y) }
+	local edge = if level
+		then ui.row { width = size.w / 2 - HEAD_INSET, shrink = false }
+		else ui.row { height = size.h / 2 - HEAD_INSET, shrink = false }
+	local line = if level
+		then ui.row { class = "flow-diagram-line", grow = true, height = 2 }
+		else ui.column { class = "flow-diagram-line", grow = true, width = 2 }
+	table.insert(into, stack { area = area, align = "center", gap = "none", line })
+	table.insert(
+		into,
+		stack {
+			area = area,
 			align = "center",
 			gap = "none",
-			ui.row { width = size.w / 2 + 2 },
-			not right and ui.icon { name = "chevron-left", size = "small", class = "flow-diagram-head" },
-			ui.row { class = "flow-diagram-line", grow = true, height = 2 },
-			right and ui.icon { name = "chevron-right", size = "small", class = "flow-diagram-head" },
-			ui.row { width = size.w / 2 + 2 },
+			not forward and edge,
+			forward and stack { grow = true },
+			ui.icon { name = head :: any, size = "small", class = "flow-diagram-head" },
+			not forward and stack { grow = true },
+			forward and edge,
 		}
-	end
-	local down = b.y > a.y
-	return ui.column {
-		area = { left = a.x - 0.05, top = math.min(a.y, b.y), width = 0.1, height = math.abs(b.y - a.y) },
-		align = "center",
-		gap = "none",
-		ui.row { height = size.h / 2 + 2 },
-		not down and ui.icon { name = "chevron-up", size = "small", class = "flow-diagram-head" },
-		ui.column { class = "flow-diagram-line", grow = true, width = 2 },
-		down and ui.icon { name = "chevron-down", size = "small", class = "flow-diagram-head" },
-		ui.row { height = size.h / 2 + 2 },
-	}
+	)
 end
 
 -- The word on a link, drawn after the nodes so no card covers it: above the
@@ -174,56 +186,69 @@ local function card(node: Node, size: Size, props: Props)
 	if node.planned then
 		table.insert(classes, "flow-diagram-node-planned")
 	end
+	local selected = props.selected == node.id
+	local plate = { "flow-diagram-plate" }
+	if node.planned then
+		table.insert(plate, "flow-diagram-plate-flat")
+	end
+	-- An opaque plate under the card: a picked card's tint and a planned
+	-- card's fade show the plate, never the lines and tokens under it.
 	return ui.column {
-		class = classes,
-		selected = props.selected == node.id,
+		class = plate,
+		selected = selected,
 		-- At most its size, and never more than its cell.
 		grow = true,
 		max_width = size.w,
 		height = size.h,
-		justify = "center",
 		gap = "none",
 		msg = { [props.event or "select"] = node.id },
 		to = props.to,
 		-- A name cut short in a narrow cell shows whole here.
 		tooltip = if node.sublabel then `{node.label}: {node.sublabel}` else node.label,
-		ui.row {
-			class = "flow-diagram-top",
-			align = "center",
+		ui.column {
+			class = classes,
+			selected = selected,
+			grow = true,
+			justify = "center",
+			gap = "none",
 			ui.row {
-				class = icon_classes,
-				width = size.icon,
-				height = size.icon,
-				shrink = false,
+				class = "flow-diagram-top",
 				align = "center",
-				justify = "center",
-				ui.icon { name = (node.icon or "circle") :: any, size = "small" },
-			},
-			-- No width of its own, only what is free: a narrow card cuts the text short.
-			ui.column {
-				grow = true,
-				width = 0,
-				gap = "none",
-				ui.text { node.label, class = "flow-diagram-label", truncate = true },
-				node.sublabel and not meter and ui.text { node.sublabel, class = "flow-diagram-sublabel", truncate = true },
-			},
-		},
-		meter and ui.row {
-			class = "flow-diagram-meter",
-			align = "center",
-			ui.row {
-				class = "flow-diagram-track",
-				width = 36,
-				height = 4,
-				shrink = false,
-				gap = "none",
 				ui.row {
-					class = `flow-diagram-fill-{meter_tone}`,
-					width = math.max(2, 36 * math.clamp(meter.level or 0, 0, 1)),
-					height = 4,
+					class = icon_classes,
+					width = size.icon,
+					height = size.icon,
+					shrink = false,
+					align = "center",
+					justify = "center",
+					ui.icon { name = (node.icon or "circle") :: any, size = "small" },
+				},
+				-- No width of its own, only what is free: a narrow card cuts the text short.
+				ui.column {
+					grow = true,
+					width = 0,
+					gap = "none",
+					ui.text { node.label, class = "flow-diagram-label", truncate = true },
+					node.sublabel and not meter and ui.text { node.sublabel, class = "flow-diagram-sublabel", truncate = true },
 				},
 			},
-			ui.row { grow = true, width = 0, ui.text { meter.text, class = { "flow-diagram-meter-text", `flow-diagram-text-{meter_tone}` }, truncate = true } },
+			meter and ui.row {
+				class = "flow-diagram-meter",
+				align = "center",
+				ui.row {
+					class = "flow-diagram-track",
+					width = 36,
+					height = 4,
+					shrink = false,
+					gap = "none",
+					ui.row {
+						class = `flow-diagram-fill-{meter_tone}`,
+						width = math.max(2, 36 * math.clamp(meter.level or 0, 0, 1)),
+						height = 4,
+					},
+				},
+				ui.row { grow = true, width = 0, ui.text { meter.text, class = { "flow-diagram-meter-text", `flow-diagram-text-{meter_tone}` }, truncate = true } },
+			},
 		},
 	}
 end
@@ -252,14 +277,21 @@ return component {
 		["selected"] = "the id of the node to show as picked",
 		["event"] = "key of the message a click on a node sends, default \"select\": { select = id }",
 		["to"] = "mod to send the click to, if not the drawing one",
-		["size"] = "small | normal: the most a node takes. In a narrow cell it narrows to fit and cuts its name short (the tooltip shows it whole); below about 170 pixels a column, a level link between neighbours hides under the cards, and only its word shows",
+		["size"] = "small | normal: the most a node takes. In a narrow cell it narrows to fit and cuts its name short (the tooltip shows it whole); where two cards leave no room for a link's head, the link shows as a short line in the gap between them",
 		["height"] = "pixels (default 120 for each row)",
 	},
 	styles = {
 		[".flow-diagram"] = { background = "muted/40", radius = 10 },
 		[".flow-diagram-line"] = { background = "muted-foreground/55" },
 		[".flow-diagram-head"] = { color = "muted-foreground" },
-		[".flow-diagram-link-label"] = { color = "muted-foreground", font_size = 10 },
+		-- On a chip: a word that crosses a group's edge or a line stays clear.
+		[".flow-diagram-link-label"] = {
+			color = "muted-foreground",
+			font_size = 10,
+			background = "background",
+			radius = 4,
+			padding = { 0, 4 },
+		},
 		[".flow-diagram-link-label-side"] = { padding = { left = 10 } },
 		[".flow-diagram-cell"] = { padding = { x = 4 } },
 		[".flow-diagram-group"] = { background = "accent/8", border = "all", border_color = "accent/30", radius = 12 },
@@ -270,21 +302,22 @@ return component {
 		[".flow-diagram-token-success"] = { background = "success" },
 		[".flow-diagram-token-warning"] = { background = "warning" },
 		[".flow-diagram-token-danger"] = { background = "danger" },
+		[".flow-diagram-plate"] = { background = "background", radius = 12, shadow = "small" },
+		[".flow-diagram-plate:selected"] = { shadow = "none" },
+		[".flow-diagram-plate-flat"] = { shadow = "none" },
 		[".flow-diagram-node"] = {
-			background = "background",
 			border = "all",
 			border_color = "muted-foreground/60",
 			radius = 12,
 			padding = { x = 9 },
-			shadow = "small",
 		},
 		[".flow-diagram-node:hover"] = { border_color = "accent" },
-		[".flow-diagram-node:selected"] = { border_color = "accent", background = "accent/8", shadow = "none" },
+		[".flow-diagram-node:selected"] = { border_color = "accent", background = "accent/8" },
 		[".flow-diagram-node-accent"] = { border_color = "accent" },
 		[".flow-diagram-node-success"] = { border_color = "success" },
 		[".flow-diagram-node-warning"] = { border_color = "warning" },
 		[".flow-diagram-node-danger"] = { border_color = "danger" },
-		[".flow-diagram-node-planned"] = { opacity = 0.55, shadow = "none" },
+		[".flow-diagram-node-planned"] = { opacity = 0.55 },
 		[".flow-diagram-top"] = { gap = 8 },
 		[".flow-diagram-icon"] = { radius = 7, background = "muted", color = "muted-foreground" },
 		[".flow-diagram-icon-accent"] = { background = "accent/15", color = "accent" },
@@ -377,7 +410,7 @@ flow_diagram {
 			local a, b = at[each.from], at[each.to]
 			-- Only level and upright links can be drawn; a slanted one is left out.
 			if a and b and drawable(a, b) then
-				table.insert(kids, link(a, b, size))
+				link(a, b, size, kids)
 			end
 		end
 		if props.time then
