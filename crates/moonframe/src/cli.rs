@@ -673,6 +673,9 @@ pub(crate) fn main(mut launch: Moonframe) -> ExitCode {
     let application =
         gpui_kit::application().with_assets(crate::assets::Assets::new(launch.assets));
     crate::app::links::listen(&application, folders.schemes());
+    if panel.is_some() {
+        crate::panel::listen(&application);
+    }
     application.run(move |cx| {
         crate::app::list_fonts_ahead(cx);
         gpui_kit::init(cx);

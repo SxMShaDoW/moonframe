@@ -9,11 +9,14 @@
 //! elsewhere the window stays a normal one.
 //!
 //! The item keeps its menu: a right click or a Ctrl-click opens it, as before.
+//!
+//! The system reopening the running app shows the panel too: a click on a
+//! Dock tile kept for it, a double-click in Finder, Spotlight, or `open`.
 
 #[cfg(all(feature = "status-item", target_os = "macos"))]
 mod macos;
 
-use gpui_kit::{App, Window};
+use gpui_kit::{App, Application, Window};
 
 /// Turns panel mode on for the mod `owner`'s item. Before the window opens.
 #[cfg(all(feature = "status-item", target_os = "macos"))]
@@ -44,6 +47,18 @@ pub(crate) fn show() {
 #[cfg(all(feature = "status-item", target_os = "macos"))]
 pub(crate) fn hide() {
     macos::hide();
+}
+
+/// Shows the panel when the system reopens the running app. A hidden panel is
+/// ordered out, not minimized, so AppKit has no window to bring back by
+/// itself. Call it before the application runs; it does nothing while panel
+/// mode is off.
+pub(crate) fn listen(application: &Application) {
+    application.on_reopen(|_| {
+        if on() {
+            show();
+        }
+    });
 }
 
 // Elsewhere there is no panel, and the window is a normal one.
