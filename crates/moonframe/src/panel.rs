@@ -69,10 +69,10 @@ pub(crate) fn is(window: &Window) -> bool {
 }
 
 /// Makes `window`, the main window, the panel: hidden, and hiding itself when
-/// it loses focus.
+/// it loses focus. Without its AppKit window, it stays a normal one.
 #[cfg(all(feature = "status-item", target_os = "macos"))]
-pub(crate) fn attach(window: &Window) {
-    macos::attach(window);
+pub(crate) fn attach(window: &Window, cx: &mut App) {
+    macos::attach(window, cx);
 }
 
 /// Shows the panel under its item, in front, and gives it the keys.
@@ -121,7 +121,7 @@ pub(crate) fn is(_: &Window) -> bool {
 }
 
 #[cfg(not(all(feature = "status-item", target_os = "macos")))]
-pub(crate) fn attach(_: &Window) {}
+pub(crate) fn attach(_: &Window, _: &mut App) {}
 
 #[cfg(not(all(feature = "status-item", target_os = "macos")))]
 pub(crate) fn show() {}

@@ -768,7 +768,14 @@ impl MoonframeApp {
             .into_iter()
             .find(|window| window.window_id() == main)
         {
-            let _ = window.update(cx, |_, window, _| window.activate_window());
+            // A panel comes forward under its item.
+            let _ = window.update(cx, |_, window, _| {
+                if panel::is(window) {
+                    panel::show();
+                } else {
+                    window.activate_window();
+                }
+            });
         }
     }
 

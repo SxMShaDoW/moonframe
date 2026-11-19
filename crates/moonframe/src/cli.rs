@@ -779,7 +779,7 @@ pub(crate) fn main(mut launch: Moonframe) -> ExitCode {
         };
         let opened = cx.open_window(options, |window, cx| {
             if panel {
-                crate::panel::attach(window);
+                crate::panel::attach(window, cx);
             }
             let view = cx.new(|cx| {
                 let mut app = MoonframeApp::new(

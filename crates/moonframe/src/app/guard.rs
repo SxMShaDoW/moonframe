@@ -42,6 +42,10 @@ pub(crate) fn quit(cx: &mut App) {
         .any(|app| app.update(cx, |app, cx| app.held(Closing::Quit, cx)));
     if !held {
         cx.quit();
+    } else if panel::on() {
+        // Quit came from the item's menu with the panel hidden: the mod
+        // answers in it, so it shows.
+        panel::show();
     }
 }
 
