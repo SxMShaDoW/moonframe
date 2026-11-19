@@ -167,6 +167,9 @@ share = []
 # `app:status-item`: a mod's item in the menu bar, with its menu (macOS).
 # Off by default; the starter turns it on.
 status-item = []
+# The `system` capability (this machine's load) for providers compiled in
+# with `Portable`; wasm providers have it with `wasm`.
+system = ["moonframe-providers/system"]
 # Terminal rendering and local/tmux sessions. Engines enable this too.
 terminal = ["dep:moonframe-mux", "dep:moonframe-terminal", "moonframe-mux/terminal"]
 # Native providers written with `async fn` (`.native_async`), and a tokio

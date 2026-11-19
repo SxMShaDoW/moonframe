@@ -314,6 +314,14 @@ Each call runs on the provider's own thread; `Handle` (`publish`,
 `publish_json`, `send`, `fail`) can be cloned into others. A mod sends it
 messages with `to = "provider:index"`.
 
+A wasm provider written with the `moonframe-provider` SDK can be linked in the
+same way: `.native("counter", moonframe::Portable::<counter::Counter>::new)`
+runs the very crate its `kind = "wasm"` folder builds, for a folder with
+`kind = "native"` (see [Compile it into the
+app](wasm-providers.md#compile-it-into-the-app)). `Handle::host_call` and
+`Handle::system_load` give any native provider the capabilities its
+provider.toml declares.
+
 ### Async and tokio
 
 With the `tokio` feature (on by default), a provider can be written with
