@@ -160,7 +160,6 @@ impl MoonframeApp {
     }
 }
 
-// Only the end-to-end tests read it, and they build on Unix with `markdown`.
 #[cfg(all(test, unix, feature = "markdown"))]
 impl MoonframeApp {
     /// Whether the frame drawn last replayed what stood still in it.
