@@ -146,6 +146,9 @@ pub(crate) struct MoonframeApp {
     /// The built-in app, the user's folder, and the profile, from which the
     /// app's layers are found again when the user installs a package.
     folders: Folders,
+    /// The layers to lay the app over in place of `folders`', for a window
+    /// drawn over layers its caller chose (`render_entry`).
+    layers: Option<Roots>,
     /// Where the theme is saved: `settings.toml` in the user's folder, or
     /// the profile's, when
     /// there is one.
@@ -323,6 +326,7 @@ impl MoonframeApp {
             themes: None,
             mod_windows: HashMap::new(),
             folders,
+            layers: None,
             settings,
             toast: None,
             toast_notice: None,
@@ -901,11 +905,19 @@ impl MoonframeApp {
         cx.notify();
     }
 
+    /// Lays the app over `layers` (with its entries) from now on, rather
+    /// than over the layers its folders give.
+    #[cfg(feature = "capture")]
+    pub(crate) fn keep_layers(&mut self, layers: Roots) {
+        self.layers = Some(layers);
+    }
+
     /// Lays the app over again when the installed packages change: mods
     /// and providers that stay keep running, and the new folders are
     /// watched. False if the layers are the same.
     fn reload_packages(&mut self, cx: &mut Context<Self>) -> bool {
-        let roots = self.hub.read(cx).entry_roots(self.folders.roots());
+        let base = self.layers.clone().unwrap_or_else(|| self.folders.roots());
+        let roots = self.hub.read(cx).entry_roots(base);
         if &roots == self.workspace.roots() {
             return false;
         }
